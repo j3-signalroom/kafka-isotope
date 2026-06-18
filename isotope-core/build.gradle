@@ -1,6 +1,6 @@
 plugins {
     id 'java-library'
-    id 'maven-publish'
+    id 'com.vanniktech.maven.publish'
 }
 
 repositories {
@@ -30,11 +30,10 @@ java {
     }
     // Publish Java-17 bytecode for the widest adoption (the code uses records
     // and instanceof patterns, so 17 is the floor; it also matches the repo's
-    // CCAF baseline). Mirrors ptf/build.gradle.
+    // CCAF baseline). Mirrors ptf/build.gradle. The sources/javadoc jars are
+    // added by the vanniktech maven-publish plugin.
     sourceCompatibility = JavaVersion.VERSION_17
     targetCompatibility = JavaVersion.VERSION_17
-    withSourcesJar()
-    withJavadocJar()
 }
 
 tasks.withType(JavaCompile).configureEach {
@@ -50,36 +49,46 @@ tasks.named('test') {
     useJUnitPlatform()
 }
 
-publishing {
-    publications {
-        mavenJava(MavenPublication) {
-            from components.java
-            pom {
-                name = 'Isotope Core'
-                description = 'Kafka record-tracing via interceptors + headers: ' +
-                    'UUIDv7 trace IDs, hop accumulation, and the bipartite consume markers. ' +
-                    'No metrics dependency — add isotope-metrics for Prometheus.'
-                url = 'https://github.com/j3-signalroom/kafka-isotope'
-                licenses {
-                    license {
-                        name = 'See LICENSE.md'
-                        url = 'https://github.com/j3-signalroom/kafka-isotope/blob/main/LICENSE.md'
-                    }
-                }
-                developers {
-                    developer {
-                        id = 'j3'
-                        name = 'Jeffrey Jonathan Jennings (J3)'
-                    }
-                }
-                scm {
-                    connection = 'scm:git:https://github.com/j3-signalroom/kafka-isotope.git'
-                    developerConnection = 'scm:git:git@github.com:j3-signalroom/kafka-isotope.git'
-                    url = 'https://github.com/j3-signalroom/kafka-isotope'
-                }
+// --- Publishing -------------------------------------------------------------
+// Maven Central (Central Portal) via vanniktech; signing is enabled only when a
+// signing key is supplied, so local builds / publishToMavenLocal stay key-free.
+def hasSigningKey = project.findProperty('signingInMemoryKey') != null ||
+        System.getenv('ORG_GRADLE_PROJECT_signingInMemoryKey') != null
+
+mavenPublishing {
+    coordinates(group.toString(), 'isotope-core', version.toString())
+    if (hasSigningKey) {
+        signAllPublications()
+    }
+    pom {
+        name = 'Isotope Core'
+        description = 'Kafka record-tracing via interceptors + headers: ' +
+            'UUIDv7 trace IDs, hop accumulation, and the bipartite consume markers. ' +
+            'No metrics dependency — add isotope-metrics for Prometheus.'
+        url = 'https://github.com/j3-signalroom/kafka-isotope'
+        licenses {
+            license {
+                name = 'See LICENSE.md'
+                url = 'https://github.com/j3-signalroom/kafka-isotope/blob/main/LICENSE.md'
             }
         }
+        developers {
+            developer {
+                id = 'j3'
+                name = 'Jeffrey Jonathan Jennings (J3)'
+            }
+        }
+        scm {
+            connection = 'scm:git:https://github.com/j3-signalroom/kafka-isotope.git'
+            developerConnection = 'scm:git:git@github.com:j3-signalroom/kafka-isotope.git'
+            url = 'https://github.com/j3-signalroom/kafka-isotope'
+        }
     }
+}
+
+// GitHub Packages stays available as a secondary target (the demo resolves from
+// here today). vanniktech owns the 'maven' publication; we only add the repo.
+publishing {
     repositories {
         maven {
             name = 'GitHubPackages'

@@ -39,12 +39,46 @@ the exporter).
 ```bash
 ./gradlew build                 # compile + test both modules
 ./gradlew publishToMavenLocal   # install 0.16.0 into ~/.m2 for local consumers
-./gradlew publish               # publish to GitHub Packages (needs a token)
 ```
 
-The library targets **Java 17** bytecode for wide adoption (toolchain builds on
-21). Publishing to GitHub Packages reads credentials from the `gpr.user` /
-`gpr.key` Gradle properties or the `GITHUB_ACTOR` / `GITHUB_TOKEN` env vars.
+The library targets **Java 17** bytecode for wide adoption (toolchain builds on 21).
+
+### Publish to GitHub Packages
+
+```bash
+GITHUB_ACTOR=<user> GITHUB_TOKEN=<token-with-write:packages> \
+  ./gradlew publishAllPublicationsToGitHubPackagesRepository
+```
+Credentials may instead come from the `gpr.user` / `gpr.key` Gradle properties.
+Note: GitHub Packages requires consumers to authenticate even for public
+artifacts — Maven Central (below) does not.
+
+### Publish to Maven Central (Sonatype Central Portal)
+
+Frictionless public consumption — no auth to depend on it. One-time prerequisites:
+
+1. **Verify the `ai.signalroom` namespace** at [central.sonatype.com](https://central.sonatype.com)
+   (a DNS TXT record on `signalroom.ai`), and generate a **publisher user token**.
+2. **Create a GPG key**, publish it to a keyserver
+   (`gpg --gen-key`; `gpg --keyserver keyserver.ubuntu.com --send-keys <id>`),
+   and export the private key (`gpg --export-secret-keys --armor <id>`).
+
+Then publish (signing turns on automatically once the key is present):
+
+```bash
+export ORG_GRADLE_PROJECT_mavenCentralUsername=<central-token-user>
+export ORG_GRADLE_PROJECT_mavenCentralPassword=<central-token-pass>
+export ORG_GRADLE_PROJECT_signingInMemoryKey="$(gpg --export-secret-keys --armor <id>)"
+export ORG_GRADLE_PROJECT_signingInMemoryKeyPassword=<gpg-passphrase>
+
+./gradlew publishAndReleaseToMavenCentral
+```
+
+`SONATYPE_HOST=CENTRAL_PORTAL` and `SONATYPE_AUTOMATIC_RELEASE=true` (in
+`gradle.properties`) target the Central Portal and auto-release once validation
+passes. Without a signing key, signing is skipped — so `build` /
+`publishToMavenLocal` / GitHub Packages stay key-free; only the Central path
+requires it.
 
 ## Demo
 
