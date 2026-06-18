@@ -1,0 +1,18 @@
+[versions]
+kafka = "4.2.0"
+jackson = "2.21.3"
+slf4j = "2.0.18"
+junit-jupiter = "6.0.3"
+# Micrometer + Prometheus exporter (isotope-metrics only).
+micrometer = "1.14.2"
+
+[libraries]
+kafka-clients = { module = "org.apache.kafka:kafka-clients", version.ref = "kafka" }
+jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jackson" }
+slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
+slf4j-simple = { module = "org.slf4j:slf4j-simple", version.ref = "slf4j" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit-jupiter" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+
+# Prometheus registry (pulls micrometer-core transitively).
+micrometer-registry-prometheus = { module = "io.micrometer:micrometer-registry-prometheus", version.ref = "micrometer" }

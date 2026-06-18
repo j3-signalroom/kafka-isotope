@@ -1,0 +1,93 @@
+plugins {
+    id 'java-library'
+    id 'maven-publish'
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // Kafka clients are provided by the host application (the interceptor
+    // implements org.apache.kafka.clients.producer.ProducerInterceptor). Keep
+    // it compileOnly so adopters control the Kafka version on their classpath.
+    compileOnly libs.kafka.clients
+
+    // Jackson is a real runtime dependency of the isotope header codec, but it
+    // is never exposed in the public API (codec returns Isotope / byte[]).
+    implementation libs.jackson.databind
+    implementation libs.slf4j.api
+
+    testImplementation libs.kafka.clients
+    testImplementation libs.junit.jupiter
+    testRuntimeOnly   libs.junit.platform.launcher
+    testRuntimeOnly   libs.slf4j.simple
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+    // Publish Java-17 bytecode for the widest adoption (the code uses records
+    // and instanceof patterns, so 17 is the floor; it also matches the repo's
+    // CCAF baseline). Mirrors ptf/build.gradle.
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+    withSourcesJar()
+    withJavadocJar()
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release.set(17)
+}
+
+// Don't fail the (published) javadoc jar on doclint nags like missing @param.
+tasks.withType(Javadoc).configureEach {
+    options.addStringOption('Xdoclint:none', '-quiet')
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+            pom {
+                name = 'Isotope Core'
+                description = 'Kafka record-tracing via interceptors + headers: ' +
+                    'UUIDv7 trace IDs, hop accumulation, and the bipartite consume markers. ' +
+                    'No metrics dependency — add isotope-metrics for Prometheus.'
+                url = 'https://github.com/j3-signalroom/kafka-isotope'
+                licenses {
+                    license {
+                        name = 'See LICENSE.md'
+                        url = 'https://github.com/j3-signalroom/kafka-isotope/blob/main/LICENSE.md'
+                    }
+                }
+                developers {
+                    developer {
+                        id = 'j3'
+                        name = 'Jeffrey Jonathan Jennings (J3)'
+                    }
+                }
+                scm {
+                    connection = 'scm:git:https://github.com/j3-signalroom/kafka-isotope.git'
+                    developerConnection = 'scm:git:git@github.com:j3-signalroom/kafka-isotope.git'
+                    url = 'https://github.com/j3-signalroom/kafka-isotope'
+                }
+            }
+        }
+    }
+    repositories {
+        maven {
+            name = 'GitHubPackages'
+            url = 'https://maven.pkg.github.com/j3-signalroom/kafka-isotope'
+            credentials {
+                username = project.findProperty('gpr.user') ?: System.getenv('GITHUB_ACTOR')
+                password = project.findProperty('gpr.key')  ?: System.getenv('GITHUB_TOKEN')
+            }
+        }
+    }
+}
