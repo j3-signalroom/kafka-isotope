@@ -91,8 +91,13 @@ repository secrets (**Settings → Secrets and variables → Actions**):
 |---|---|
 | `MAVEN_CENTRAL_USERNAME` | Central Portal publisher token username |
 | `MAVEN_CENTRAL_PASSWORD` | Central Portal publisher token password |
-| `SIGNING_KEY` | full ASCII-armored key: `gpg --export-secret-keys --armor <id>` |
+| `SIGNING_KEY` | base64 of the armored key: `gpg --export-secret-keys --armor <id> \| base64` |
 | `SIGNING_KEY_PASSWORD` | the GPG passphrase that unlocks `SIGNING_KEY` |
+
+> **Store `SIGNING_KEY` base64-encoded, not as a raw paste.** GitHub's secret
+> store mangles the armored key's line breaks, after which Gradle fails with
+> `Could not read PGP secret key`. Base64 keeps it a single line; the workflow
+> decodes it back to the armored key before signing.
 
 The published version comes from the **release tag** (a leading `v` is stripped,
 so `v0.16.0` → `0.16.0`), overriding `version` in `gradle.properties` — the tag
@@ -105,3 +110,4 @@ A runnable reference pipeline (Confluent Platform / Confluent Cloud on Minikube,
 the seven Flink reports, and a one-command Prometheus + Grafana showcase) lives
 in the companion repo:
 [j3-signalroom/confluent-kafka-isotope](https://github.com/j3-signalroom/confluent-kafka-isotope).
+
