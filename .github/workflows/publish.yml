@@ -14,7 +14,12 @@ name: Publish to Maven Central
 # Requires these repository secrets (Settings → Secrets and variables → Actions):
 #   MAVEN_CENTRAL_USERNAME  Central Portal publisher token username
 #   MAVEN_CENTRAL_PASSWORD  Central Portal publisher token password
-#   SIGNING_KEY             full ASCII-armored GPG private key block
+#   SIGNING_KEY             base64 of the ASCII-armored GPG private key block
+#                           (gpg --export-secret-keys --armor <id> | base64).
+#                           Base64 keeps it a single line so the armor's
+#                           newlines survive the trip through the secret store —
+#                           a raw multiline paste gets its line breaks mangled
+#                           and Gradle fails with "Could not read PGP secret key".
 #   SIGNING_KEY_PASSWORD    GPG passphrase that unlocks SIGNING_KEY
 
 on:
@@ -52,11 +57,23 @@ jobs:
           RAW_VERSION: ${{ github.event.release.tag_name || inputs.version }}
         run: echo "value=${RAW_VERSION#v}" >> "$GITHUB_OUTPUT"
 
+      - name: Decode signing key
+        env:
+          SIGNING_KEY_BASE64: ${{ secrets.SIGNING_KEY }}
+        run: |
+          # Decode the base64 secret back to the armored key and stash the
+          # multiline value in $GITHUB_ENV via a heredoc (the only way to carry
+          # newlines into a step env var). Gradle's signing plugin dearmors it.
+          {
+            echo 'ORG_GRADLE_PROJECT_signingInMemoryKey<<__ISOTOPE_KEY_EOF__'
+            echo "$SIGNING_KEY_BASE64" | base64 --decode
+            echo '__ISOTOPE_KEY_EOF__'
+          } >> "$GITHUB_ENV"
+
       - name: Publish and release
         env:
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
           ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
-          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_KEY }}
           ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_KEY_PASSWORD }}
         run: >-
           ./gradlew publishAndReleaseToMavenCentral
