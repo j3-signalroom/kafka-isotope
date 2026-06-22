@@ -60,7 +60,8 @@ Frictionless public consumption — no auth to depend on it. One-time prerequisi
 1. **Verify the `ai.signalroom` namespace** at [central.sonatype.com](https://central.sonatype.com)
    (a DNS TXT record on `signalroom.ai`), and generate a **publisher user token**.
 2. **Create a GPG key**, publish it to a keyserver
-   (`gpg --gen-key`; `gpg --keyserver keyserver.ubuntu.com --send-keys <id>`),
+   (`gpg --full-generate-key`; `gpg --keyserver hkps://keyserver.ubuntu.com --send-keys <id>`
+   — use `hkps://` to avoid the often-blocked HKP port 11371),
    and export the private key (`gpg --export-secret-keys --armor <id>`).
 
 Then publish (signing turns on automatically once the key is present):
@@ -79,6 +80,24 @@ export ORG_GRADLE_PROJECT_signingInMemoryKeyPassword=<gpg-passphrase>
 passes. Without a signing key, signing is skipped — so `build` /
 `publishToMavenLocal` / GitHub Packages stay key-free; only the Central path
 requires it.
+
+#### Automated release via CI
+
+[`.github/workflows/publish.yml`](.github/workflows/publish.yml) runs the same
+`publishAndReleaseToMavenCentral` task on GitHub Actions. Add these four
+repository secrets (**Settings → Secrets and variables → Actions**):
+
+| Secret | Value |
+|---|---|
+| `MAVEN_CENTRAL_USERNAME` | Central Portal publisher token username |
+| `MAVEN_CENTRAL_PASSWORD` | Central Portal publisher token password |
+| `SIGNING_KEY` | full ASCII-armored key: `gpg --export-secret-keys --armor <id>` |
+| `SIGNING_KEY_PASSWORD` | the GPG passphrase that unlocks `SIGNING_KEY` |
+
+The published version comes from the **release tag** (a leading `v` is stripped,
+so `v0.16.0` → `0.16.0`), overriding `version` in `gradle.properties` — the tag
+is the single source of truth. Publish a GitHub Release tagged `v0.16.0` to ship
+it, or trigger the workflow manually from the Actions tab and supply the version.
 
 ## Demo
 

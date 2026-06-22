@@ -1,0 +1,64 @@
+name: Publish to Maven Central
+
+# Publishes the signed bundle to the Sonatype Central Portal and auto-releases
+# (SONATYPE_AUTOMATIC_RELEASE=true in gradle.properties) once validation passes.
+#
+# The published version comes from the release tag (a leading "v" is stripped,
+# so tag v0.16.0 → version 0.16.0), overriding `version` in gradle.properties.
+# The tag is the single source of truth — no need to bump gradle.properties.
+#
+# Triggers:
+#   - on a published GitHub Release (the normal path)
+#   - manually via the Actions tab (workflow_dispatch); supply the version input
+#
+# Requires these repository secrets (Settings → Secrets and variables → Actions):
+#   MAVEN_CENTRAL_USERNAME  Central Portal publisher token username
+#   MAVEN_CENTRAL_PASSWORD  Central Portal publisher token password
+#   SIGNING_KEY             full ASCII-armored GPG private key block
+#   SIGNING_KEY_PASSWORD    GPG passphrase that unlocks SIGNING_KEY
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (e.g. 0.16.0)'
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Resolve version
+        id: version
+        env:
+          # release: strip a leading "v" from the tag; dispatch: use the input
+          RAW_VERSION: ${{ github.event.release.tag_name || inputs.version }}
+        run: echo "value=${RAW_VERSION#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish and release
+        env:
+          ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_KEY }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_KEY_PASSWORD }}
+        run: >-
+          ./gradlew publishAndReleaseToMavenCentral
+          -Pversion=${{ steps.version.outputs.value }}
+          --no-daemon --stacktrace
