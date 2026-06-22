@@ -61,15 +61,26 @@ Frictionless public consumption — no auth to depend on it. One-time prerequisi
    (a DNS TXT record on `signalroom.ai`), and generate a **publisher user token**.
 2. **Create a GPG key**, publish it to a keyserver
    (`gpg --full-generate-key`; `gpg --keyserver hkps://keyserver.ubuntu.com --send-keys <id>`
-   — use `hkps://` to avoid the often-blocked HKP port 11371),
-   and export the private key (`gpg --export-secret-keys --armor <id>`).
+   — use `hkps://` to avoid the often-blocked HKP port 11371), and export the
+   private key:
+   ```bash
+   gpg --batch --pinentry-mode loopback --passphrase '<gpg-passphrase>' \
+       --export-secret-keys --armor <id>
+   ```
+   On GnuPG 2.4+ (`keyboxd`), a plain `gpg --export-secret-keys --armor <id>`
+   run non-interactively (piped, in a subshell, or in CI) emits **nothing** when
+   the agent can't prompt for the passphrase — and a downstream signing step then
+   fails with `Could not read PGP secret key` (`tag 0xffffffff`). The
+   `--pinentry-mode loopback --passphrase …` form forces the unlock and produces
+   the real ~7 KB armored block.
 
 Then publish (signing turns on automatically once the key is present):
 
 ```bash
 export ORG_GRADLE_PROJECT_mavenCentralUsername=<central-token-user>
 export ORG_GRADLE_PROJECT_mavenCentralPassword=<central-token-pass>
-export ORG_GRADLE_PROJECT_signingInMemoryKey="$(gpg --export-secret-keys --armor <id>)"
+export ORG_GRADLE_PROJECT_signingInMemoryKey="$(gpg --batch --pinentry-mode loopback \
+  --passphrase '<gpg-passphrase>' --export-secret-keys --armor <id>)"
 export ORG_GRADLE_PROJECT_signingInMemoryKeyPassword=<gpg-passphrase>
 
 ./gradlew publishAndReleaseToMavenCentral
@@ -91,7 +102,7 @@ repository secrets (**Settings → Secrets and variables → Actions**):
 |---|---|
 | `MAVEN_CENTRAL_USERNAME` | Central Portal publisher token username |
 | `MAVEN_CENTRAL_PASSWORD` | Central Portal publisher token password |
-| `SIGNING_KEY` | base64 of the armored key: `gpg --export-secret-keys --armor <id> \| base64` |
+| `SIGNING_KEY` | base64 of the armored key: `gpg --batch --pinentry-mode loopback --passphrase '<pass>' --export-secret-keys --armor <id> \| base64` |
 | `SIGNING_KEY_PASSWORD` | the GPG passphrase that unlocks `SIGNING_KEY` |
 
 > **Store `SIGNING_KEY` base64-encoded, not as a raw paste.** GitHub's secret
@@ -110,4 +121,3 @@ A runnable reference pipeline (Confluent Platform / Confluent Cloud on Minikube,
 the seven Flink reports, and a one-command Prometheus + Grafana showcase) lives
 in the companion repo:
 [j3-signalroom/confluent-kafka-isotope](https://github.com/j3-signalroom/confluent-kafka-isotope).
-
