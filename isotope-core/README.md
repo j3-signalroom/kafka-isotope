@@ -80,4 +80,3 @@ seven reports are metrics-native), see [docs/metrics.md](https://github.com/j3-s
 [docs/design.md](https://github.com/j3-signalroom/confluent-kafka-isotope/blob/main/docs/design.md). The runnable demo and one-command
 Prometheus + Grafana showcase live in the [`app`](https://github.com/j3-signalroom/confluent-kafka-isotope/tree/main/app) module and
 [k8s/monitoring](https://github.com/j3-signalroom/confluent-kafka-isotope/tree/main/k8s/monitoring).
-
