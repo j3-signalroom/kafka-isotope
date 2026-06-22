@@ -23,11 +23,11 @@ Two artifacts, so you only take what you need:
 
 ```groovy
 repositories {
-    maven { url 'https://maven.pkg.github.com/j3-signalroom/confluent-kafka-isotope' }
+    maven { url 'https://maven.pkg.github.com/j3-signalroom/kafka-isotope' }
 }
 dependencies {
-    implementation 'ai.signalroom:isotope-core:0.16.0'
-    implementation 'ai.signalroom:isotope-metrics:0.16.0' // optional — only for Prometheus
+    implementation 'ai.signalroom:isotope-core:0.17.1'
+    implementation 'ai.signalroom:isotope-metrics:0.17.1' // optional — only for Prometheus
 }
 ```
 

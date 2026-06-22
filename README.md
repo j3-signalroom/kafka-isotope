@@ -25,8 +25,8 @@ repositories {
     maven { url 'https://maven.pkg.github.com/j3-signalroom/kafka-isotope' }
 }
 dependencies {
-    implementation 'ai.signalroom:isotope-core:0.16.0'
-    implementation 'ai.signalroom:isotope-metrics:0.16.0' // optional — only for Prometheus
+    implementation 'ai.signalroom:isotope-core:0.17.1'
+    implementation 'ai.signalroom:isotope-metrics:0.17.1' // optional — only for Prometheus
 }
 ```
 
@@ -38,7 +38,7 @@ the exporter).
 
 ```bash
 ./gradlew build                 # compile + test both modules
-./gradlew publishToMavenLocal   # install 0.16.0 into ~/.m2 for local consumers
+./gradlew publishToMavenLocal   # install 0.17.1 into ~/.m2 for local consumers
 ```
 
 The library targets **Java 17** bytecode for wide adoption (toolchain builds on 21).
@@ -111,8 +111,8 @@ repository secrets (**Settings → Secrets and variables → Actions**):
 > decodes it back to the armored key before signing.
 
 The published version comes from the **release tag** (a leading `v` is stripped,
-so `v0.16.0` → `0.16.0`), overriding `version` in `gradle.properties` — the tag
-is the single source of truth. Publish a GitHub Release tagged `v0.16.0` to ship
+so `v0.17.1` → `0.17.1`), overriding `version` in `gradle.properties` — the tag
+is the single source of truth. Publish a GitHub Release tagged `v0.17.1` to ship
 it, or trigger the workflow manually from the Actions tab and supply the version.
 
 ## Demo
