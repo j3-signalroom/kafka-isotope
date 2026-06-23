@@ -49,7 +49,7 @@ This makes `kafka-isotope` a lightweight but powerful observability layer for Ka
 
 ```groovy
 repositories {
-    maven { url 'https://maven.pkg.github.com/j3-signalroom/kafka-isotope' }
+    mavenCentral()
 }
 dependencies {
     implementation 'ai.signalroom:kafka-isotope-core:0.18.0'
