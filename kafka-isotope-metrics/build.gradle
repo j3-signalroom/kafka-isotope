@@ -8,14 +8,16 @@ repositories {
 }
 
 dependencies {
-    // Kafka clients are provided by the host application (the interceptor
-    // implements org.apache.kafka.clients.producer.ProducerInterceptor). Keep
-    // it compileOnly so adopters control the Kafka version on their classpath.
-    compileOnly libs.kafka.clients
+    // Core propagation + the metrics SPI this module implements. `api` so
+    // consumers of kafka-isotope-metrics transitively get kafka-isotope-core.
+    api project(':kafka-isotope-core')
 
-    // Jackson is a real runtime dependency of the isotope header codec, but it
-    // is never exposed in the public API (codec returns Isotope / byte[]).
-    implementation libs.jackson.databind
+    // The Micrometer/Prometheus registry is this module's whole reason to exist.
+    api libs.micrometer.registry.prometheus
+
+    // Kafka clients are provided by the host application; only the consume-side
+    // helpers reference Kafka types at compile time.
+    compileOnly libs.kafka.clients
     implementation libs.slf4j.api
 
     testImplementation libs.kafka.clients
@@ -28,10 +30,7 @@ java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(21)
     }
-    // Publish Java-17 bytecode for the widest adoption (the code uses records
-    // and instanceof patterns, so 17 is the floor; it also matches the repo's
-    // CCAF baseline). Mirrors ptf/build.gradle. The sources/javadoc jars are
-    // added by the vanniktech maven-publish plugin.
+    // Sources/javadoc jars are added by the vanniktech maven-publish plugin.
     sourceCompatibility = JavaVersion.VERSION_17
     targetCompatibility = JavaVersion.VERSION_17
 }
@@ -56,15 +55,15 @@ def hasSigningKey = project.findProperty('signingInMemoryKey') != null ||
         System.getenv('ORG_GRADLE_PROJECT_signingInMemoryKey') != null
 
 mavenPublishing {
-    coordinates(group.toString(), 'isotope-core', version.toString())
+    coordinates(group.toString(), 'kafka-isotope-metrics', version.toString())
     if (hasSigningKey) {
         signAllPublications()
     }
     pom {
-        name = 'Isotope Core'
-        description = 'Kafka record-tracing via interceptors + headers: ' +
-            'UUIDv7 trace IDs, hop accumulation, and the bipartite consume markers. ' +
-            'No metrics dependency — add isotope-metrics for Prometheus.'
+        name = 'Isotope Metrics'
+        description = 'Optional Micrometer/Prometheus exporter for Isotope tracing: ' +
+            'serves the latency / topology / hop-distribution and consume-side meters ' +
+            'at GET /metrics. Depends on kafka-isotope-core.'
         url = 'https://github.com/j3-signalroom/kafka-isotope'
         licenses {
             license {
@@ -86,8 +85,7 @@ mavenPublishing {
     }
 }
 
-// GitHub Packages stays available as a secondary target (the demo resolves from
-// here today). vanniktech owns the 'maven' publication; we only add the repo.
+// GitHub Packages stays available as a secondary target.
 publishing {
     repositories {
         maven {

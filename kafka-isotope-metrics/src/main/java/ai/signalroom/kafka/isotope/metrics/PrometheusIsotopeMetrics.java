@@ -38,7 +38,7 @@ import ai.signalroom.kafka.isotope.IsotopeMetricsSink;
  * This is a process-wide singleton ({@link #INSTANCE}). Calling {@link #start(int)}
  * (or {@link #ensureRegistry()}) binds a dedicated Prometheus registry and
  * registers the singleton into the core {@link IsotopeMetrics} facade, so the
- * producer interceptor and consume markers in {@code isotope-core} begin routing
+ * producer interceptor and consume markers in {@code kafka-isotope-core} begin routing
  * their emissions here. Until then the core facade uses its no-op sink, so
  * propagation runs with zero metrics overhead.
  *

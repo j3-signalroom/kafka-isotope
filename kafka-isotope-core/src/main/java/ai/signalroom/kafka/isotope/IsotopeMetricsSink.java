@@ -8,12 +8,12 @@
 package ai.signalroom.kafka.isotope;
 
 /**
- * The metrics seam between {@code isotope-core} (trace propagation) and any
+ * The metrics seam between {@code kafka-isotope-core} (trace propagation) and any
  * metrics backend. Core emits through this interface via the {@link IsotopeMetrics}
  * facade, so adopters who only want propagation never pull a metrics dependency.
  *
  * <p>The default sink is {@link NoOpMetricsSink} (all methods inert,
- * {@link #isEnabled()} {@code false}). The optional {@code isotope-metrics}
+ * {@link #isEnabled()} {@code false}). The optional {@code kafka-isotope-metrics}
  * module provides a Micrometer/Prometheus implementation
  * ({@code PrometheusIsotopeMetrics}) and registers it via
  * {@link IsotopeMetrics#register(IsotopeMetricsSink)} when its exporter starts.

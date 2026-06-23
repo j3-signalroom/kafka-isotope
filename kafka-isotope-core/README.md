@@ -11,12 +11,12 @@ Two artifacts, so you only take what you need:
 
 | Module | Coordinate | Pulls | Use it for |
 |---|---|---|---|
-| **isotope-core** | `ai.signalroom:isotope-core` | Jackson, SLF4J (`kafka-clients` is `compileOnly`) | Trace **propagation** — the interceptor, headers, consume markers. |
-| **isotope-metrics** | `ai.signalroom:isotope-metrics` | isotope-core + Micrometer/Prometheus | Optional `/metrics` exporter for the stateless reports. |
+| **kafka-isotope-core** | `ai.signalroom:kafka-isotope-core` | Jackson, SLF4J (`kafka-clients` is `compileOnly`) | Trace **propagation** — the interceptor, headers, consume markers. |
+| **kafka-isotope-metrics** | `ai.signalroom:kafka-isotope-metrics` | kafka-isotope-core + Micrometer/Prometheus | Optional `/metrics` exporter for the stateless reports. |
 
-> `isotope-core` never depends on a metrics library. Emission is routed through a
+> `kafka-isotope-core` never depends on a metrics library. Emission is routed through a
 > no-op [`IsotopeMetricsSink`](src/main/java/ai/signalroom/kafka/isotope/IsotopeMetricsSink.java)
-> until `isotope-metrics` registers the Prometheus one — so propagation runs with
+> until `kafka-isotope-metrics` registers the Prometheus one — so propagation runs with
 > zero metrics overhead.
 
 ## Install (Gradle, GitHub Packages)
@@ -26,8 +26,8 @@ repositories {
     maven { url 'https://maven.pkg.github.com/j3-signalroom/kafka-isotope' }
 }
 dependencies {
-    implementation 'ai.signalroom:isotope-core:0.17.1'
-    implementation 'ai.signalroom:isotope-metrics:0.17.1' // optional — only for Prometheus
+    implementation 'ai.signalroom:kafka-isotope-core:0.18.0'
+    implementation 'ai.signalroom:kafka-isotope-metrics:0.18.0' // optional — only for Prometheus
 }
 ```
 

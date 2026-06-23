@@ -3,7 +3,7 @@ kafka = "4.2.0"
 jackson = "2.21.3"
 slf4j = "2.0.18"
 junit-jupiter = "6.0.3"
-# Micrometer + Prometheus exporter (isotope-metrics only).
+# Micrometer + Prometheus exporter (kafka-isotope-metrics only).
 micrometer = "1.14.2"
 
 [libraries]
