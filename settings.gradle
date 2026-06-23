@@ -4,5 +4,5 @@ plugins {
 }
 
 rootProject.name = 'kafka-isotope'
-include('isotope-core')
-include('isotope-metrics')
+include('kafka-isotope-core')
+include('kafka-isotope-metrics')

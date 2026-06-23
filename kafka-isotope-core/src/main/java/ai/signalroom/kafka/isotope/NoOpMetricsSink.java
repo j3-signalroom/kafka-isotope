@@ -10,7 +10,7 @@ package ai.signalroom.kafka.isotope;
 /**
  * The default {@link IsotopeMetricsSink}: every method is inert and
  * {@link #isEnabled()} is {@code false}. This is what {@link IsotopeMetrics}
- * routes to until a real sink is registered, so {@code isotope-core} carries no
+ * routes to until a real sink is registered, so {@code kafka-isotope-core} carries no
  * metrics dependency and the hot path stays free when metrics are off.
  */
 final class NoOpMetricsSink implements IsotopeMetricsSink {

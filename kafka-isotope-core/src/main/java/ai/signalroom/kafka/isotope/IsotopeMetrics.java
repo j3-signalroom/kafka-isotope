@@ -9,7 +9,7 @@ package ai.signalroom.kafka.isotope;
 
 /**
  * Static facade that routes isotope metric emissions to a registered
- * {@link IsotopeMetricsSink}. This is the seam that keeps {@code isotope-core}
+ * {@link IsotopeMetricsSink}. This is the seam that keeps {@code kafka-isotope-core}
  * free of any metrics dependency: {@link IsotopeProducerInterceptor} and
  * {@link IsotopeContext} call these static methods unconditionally, and they
  * delegate to whatever sink is installed.
@@ -17,7 +17,7 @@ package ai.signalroom.kafka.isotope;
  * <h2>Default and registration</h2>
  * The default sink is {@link NoOpMetricsSink} — {@link #isEnabled()} is
  * {@code false} and every {@code record*} call is inert, so propagation works
- * with zero metrics overhead. The optional {@code isotope-metrics} module's
+ * with zero metrics overhead. The optional {@code kafka-isotope-metrics} module's
  * {@code PrometheusIsotopeMetrics} calls {@link #register(IsotopeMetricsSink)}
  * when its exporter binds, after which emissions flow to Micrometer/Prometheus.
  *
@@ -34,7 +34,7 @@ public final class IsotopeMetrics {
 
     /**
      * Installs the active sink. Passing {@code null} restores the no-op sink.
-     * Called by {@code isotope-metrics} when its exporter starts.
+     * Called by {@code kafka-isotope-metrics} when its exporter starts.
      */
     public static void register(IsotopeMetricsSink newSink) {
         sink = (newSink == null) ? NoOpMetricsSink.INSTANCE : newSink;
