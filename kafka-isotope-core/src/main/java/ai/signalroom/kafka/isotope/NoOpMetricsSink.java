@@ -27,18 +27,18 @@ final class NoOpMetricsSink implements IsotopeMetricsSink {
     @Override
     public void recordHop(String pipeline, String originService,
             String thisService, String thisTopic, long latencyMs, int hopCount) {
-        // no-op
+        // --- no-op
     }
 
     @Override
     public void recordConsume(String pipeline, String originService,
             String consumerService, String thisTopic, long latencyMs) {
-        // no-op
+        // --- no-op
     }
 
     @Override
     public void recordConsumeAge(String pipeline, String originService,
             String consumerService, String thisTopic, long ageMs) {
-        // no-op
+        // --- no-op
     }
 }
