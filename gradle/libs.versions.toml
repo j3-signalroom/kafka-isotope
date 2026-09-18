@@ -5,6 +5,10 @@ slf4j = "2.0.18"
 junit-jupiter = "6.0.3"
 # Micrometer + Prometheus exporter (kafka-isotope-metrics only).
 micrometer = "1.14.2"
+# Generated OTLP protobuf classes (kafka-isotope-otel only). The OpenTelemetry
+# project ships these under an -alpha qualifier as a matter of policy for the
+# proto artifact; the wire format itself is stable and 1.x.
+opentelemetry-proto = "1.7.0-alpha"
 
 [libraries]
 kafka-clients = { module = "org.apache.kafka:kafka-clients", version.ref = "kafka" }
@@ -16,3 +20,6 @@ junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher
 
 # Prometheus registry (pulls micrometer-core transitively).
 micrometer-registry-prometheus = { module = "io.micrometer:micrometer-registry-prometheus", version.ref = "micrometer" }
+
+# OTLP protobuf messages (pulls protobuf-java transitively).
+opentelemetry-proto = { module = "io.opentelemetry.proto:opentelemetry-proto", version.ref = "opentelemetry-proto" }

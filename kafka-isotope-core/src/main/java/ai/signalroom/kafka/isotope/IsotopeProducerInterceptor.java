@@ -14,6 +14,7 @@ import java.util.Objects;
 import org.apache.kafka.clients.producer.ProducerInterceptor;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
+import org.apache.kafka.common.header.Header;
 import org.apache.kafka.common.header.Headers;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,6 +27,13 @@ import org.slf4j.LoggerFactory;
  * JSON-encoded isotope plus seven scalar headers describing the just-appended
  * hop. Sourcing order: thread-local context, inbound header, or a fresh trace
  * stamped with {@value #SERVICE_NAME_CONFIG}.
+ *
+ * <p>When the optional span writer is running, each hop also becomes a span.
+ * On kafka-clients 4.1+ the span is emitted from
+ * {@link #onAcknowledgement(RecordMetadata, Exception, Headers)} once the broker
+ * has answered, so it records the delivery outcome; on older clients, which
+ * never show an acknowledgement the record's headers, it is emitted from
+ * {@link #onSend} instead.
  */
 public class IsotopeProducerInterceptor<K, V> implements ProducerInterceptor<K, V> {
 
@@ -44,6 +52,33 @@ public class IsotopeProducerInterceptor<K, V> implements ProducerInterceptor<K, 
 
     private String serviceName = "unknown";
     private String pipelineName = "unknown";
+
+    /*
+     * Whether this interceptor holds a reference on the span sink. Recorded at
+     * configure() time and handed back in close(): the OTLP sink's producer is
+     * process-wide and shared by every interceptor instance, so it may only be
+     * torn down once the last of them is gone. False whenever spans were off
+     * when this interceptor was configured, which keeps a sink registered later
+     * from ever seeing a release it never handed out.
+     */
+    private boolean spansAcquired;
+
+    /**
+     * Whether the running kafka-clients passes the sent record's headers to
+     * {@code onAcknowledgement} — the three-argument overload added in 4.1. Every
+     * 4.1+ producer calls only that overload, so its presence on the interface
+     * is proof it will be called. Resolved once: the interface can't change
+     * under a loaded class.
+     */
+    static final boolean ACK_HEADERS_SUPPORTED = ackHeadersSupported();
+
+    /*
+     * Where hop spans are emitted: from onAcknowledgement when the client
+     * supports it, otherwise from onSend. Exactly one of the two emits, so a hop
+     * never produces two spans. Package-private so tests can exercise the onSend
+     * fallback on a 4.1+ test classpath.
+     */
+    boolean spansOnAck = ACK_HEADERS_SUPPORTED;
 
     /**
      * This method is called once per interceptor instance, which is typically once per producer. It reads
@@ -69,6 +104,10 @@ public class IsotopeProducerInterceptor<K, V> implements ProducerInterceptor<K, 
             LOG.warn("{} not configured; new traces will be tagged pipeline=\"unknown\"",
                 PIPELINE_NAME_CONFIG);
         }
+
+        // Claim a reference on the span sink (a no-op unless the optional
+        // kafka-isotope-otel writer is running), released in close().
+        spansAcquired = IsotopeSpans.acquire();
     }
 
     /**
@@ -142,6 +181,18 @@ public class IsotopeProducerInterceptor<K, V> implements ProducerInterceptor<K, 
                 iso.hops().size());
         }
 
+        /*
+         * Pre-4.1 clients only: emit the span for the hop just appended. On 4.1+
+         * it waits for onAcknowledgement, where the outcome is known. No-op
+         * unless the optional kafka-isotope-otel writer is running, and when it
+         * is, this only drops a small event on a bounded queue that a background
+         * thread drains — onSend runs on the caller's thread and never waits on
+         * a span.
+         */
+        if (!spansOnAck && IsotopeSpans.isEnabled()) {
+            IsotopeSpans.recordHopSpan(iso, serviceName, producerRecord.topic(), hopTsMs);
+        }
+
         return producerRecord;
     }
 
@@ -160,28 +211,66 @@ public class IsotopeProducerInterceptor<K, V> implements ProducerInterceptor<K, 
     }
 
     /**
-     * This method is called once per record acknowledged by the broker. In this interceptor, it is a no-op because
-     * the hop is appended in onSend, and the broker-assigned partition and offset are not threaded back into the
-     * header. If you need to capture broker-assigned metadata, you would need to implement a custom callback and
-     * manage the in-flight isotopes in a way that allows you to correlate the onAcknowledgement call with the
-     * original record and its isotope. For the purposes of this interceptor, we rely on the fact that the hop
-     * information is already captured in the onSend method, and we do not need to modify the isotope or headers upon
-     * acknowledgment. If you want to extend this interceptor to capture acknowledgment metadata, you would need to
-     * design a mechanism to store the in-flight isotopes in a concurrent map keyed by some correlation ID, and then
-     * update the isotope with the acknowledgment metadata in this method. However, that is beyond the scope of this
-     * basic interceptor implementation.
-     * 
-     * In summary, the onAcknowledgement method is intentionally left as a no-op in this interceptor because the necessary
-     * hop information is already captured in the onSend method, and we do not have a mechanism to correlate acknowledgments
-     * with their corresponding isotopes in this implementation.
+     * The acknowledgement callback of kafka-clients before 4.1, which is given
+     * no headers and so cannot tell which trace the record belonged to. On those
+     * clients hop spans come from {@link #onSend} instead, and this stays a
+     * no-op. From 4.1 on, Kafka calls
+     * {@link #onAcknowledgement(RecordMetadata, Exception, Headers)} instead.
      */
     @Override
     public void onAcknowledgement(RecordMetadata metadata, Exception exception) {
         // --- no-op
     }
 
+    /**
+     * Emits the hop's span once the broker has answered (kafka-clients 4.1+).
+     *
+     * <p>{@code headers} are those of the record as sent — after {@link #onSend}
+     * — so they carry the {@code x-isotope} JSON whose last hop is this produce.
+     * That is everything the span needs: no in-flight map is required to match
+     * the acknowledgement back to its trace. On top of what {@code onSend} could
+     * report, the span gains the partition and offset and, when {@code exception}
+     * is set, is marked as a failed produce.
+     *
+     * <p>Kafka calls this on the producer's network I/O thread, including for
+     * sends that fail before reaching the broker. So it only reads one header
+     * and hands the bytes over; decoding happens on the span writer's thread.
+     */
+    @Override
+    public void onAcknowledgement(RecordMetadata metadata, Exception exception, Headers headers) {
+        if (!spansOnAck || headers == null || !IsotopeSpans.isEnabled()) {
+            return;
+        }
+        Header isotopeHeader = headers.lastHeader(Isotope.HEADER_KEY);
+        if (isotopeHeader == null) {
+            // onSend never stamped this record (it threw, or another interceptor
+            // stripped the header): nothing to attribute a span to.
+            return;
+        }
+        int partition = metadata == null ? -1 : metadata.partition();
+        long offset = (metadata == null || !metadata.hasOffset()) ? -1L : metadata.offset();
+        IsotopeSpans.recordAcknowledgedHopSpan(isotopeHeader.value(), partition, offset, exception);
+    }
+
+    private static boolean ackHeadersSupported() {
+        try {
+            ProducerInterceptor.class.getMethod(
+                "onAcknowledgement", RecordMetadata.class, Exception.class, Headers.class);
+            return true;
+        } catch (NoSuchMethodException e) {
+            return false;
+        }
+    }
+
+    /**
+     * Hands back the span-sink reference taken in {@link #configure}. The OTLP
+     * span writer's producer is shared across the JVM, so it is closed by
+     * whichever interceptor releases the last reference, not by the first one to
+     * close. No-op when spans were never enabled.
+     */
     @Override
     public void close() {
-        // --- no-op
+        IsotopeSpans.release(spansAcquired);
+        spansAcquired = false;
     }
 }

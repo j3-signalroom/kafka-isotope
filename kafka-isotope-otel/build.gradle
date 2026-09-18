@@ -1,0 +1,104 @@
+plugins {
+    id 'java-library'
+    id 'com.vanniktech.maven.publish'
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // Core propagation + the span SPI this module implements. `api` so consumers
+    // of kafka-isotope-otel transitively get kafka-isotope-core.
+    api project(':kafka-isotope-core')
+
+    // Generated OTLP protobuf classes (pulls protobuf-java). `implementation`,
+    // not `api`: OTLP types never appear in this module's public surface — the
+    // encoder is package-private and the payload leaves as bytes.
+    implementation libs.opentelemetry.proto
+
+    // Kafka clients are provided by the host application. The span writer builds
+    // a KafkaProducer at runtime, but any adopter of this module has kafka-clients
+    // on the classpath by definition — keep the version their choice, as core does.
+    compileOnly libs.kafka.clients
+    implementation libs.slf4j.api
+
+    testImplementation libs.kafka.clients
+    testImplementation libs.junit.jupiter
+    testRuntimeOnly   libs.junit.platform.launcher
+    testRuntimeOnly   libs.slf4j.simple
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+    // Sources/javadoc jars are added by the vanniktech maven-publish plugin.
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release.set(17)
+}
+
+// Don't fail the (published) javadoc jar on doclint nags like missing @param.
+tasks.withType(Javadoc).configureEach {
+    options.addStringOption('Xdoclint:none', '-quiet')
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
+
+// --- Publishing -------------------------------------------------------------
+// Maven Central (Central Portal) via vanniktech; signing is enabled only when a
+// signing key is supplied, so local builds / publishToMavenLocal stay key-free.
+def hasSigningKey = project.findProperty('signingInMemoryKey') != null ||
+        System.getenv('ORG_GRADLE_PROJECT_signingInMemoryKey') != null
+
+mavenPublishing {
+    coordinates(group.toString(), 'kafka-isotope-otel', version.toString())
+    if (hasSigningKey) {
+        signAllPublications()
+    }
+    pom {
+        name = 'Isotope OTel'
+        description = 'Optional OpenTelemetry span writer for Isotope tracing: ' +
+            'turns each hop into an OTLP span on a Kafka topic, readable by a stock ' +
+            'OpenTelemetry Collector (kafka receiver, encoding: otlp_proto). ' +
+            'Depends on kafka-isotope-core.'
+        url = 'https://github.com/j3-signalroom/kafka-isotope'
+        licenses {
+            license {
+                name = 'See LICENSE.md'
+                url = 'https://github.com/j3-signalroom/kafka-isotope/blob/main/LICENSE.md'
+            }
+        }
+        developers {
+            developer {
+                id = 'j3'
+                name = 'Jeffrey Jonathan Jennings (J3)'
+            }
+        }
+        scm {
+            connection = 'scm:git:https://github.com/j3-signalroom/kafka-isotope.git'
+            developerConnection = 'scm:git:git@github.com:j3-signalroom/kafka-isotope.git'
+            url = 'https://github.com/j3-signalroom/kafka-isotope'
+        }
+    }
+}
+
+// GitHub Packages stays available as a secondary target.
+publishing {
+    repositories {
+        maven {
+            name = 'GitHubPackages'
+            url = 'https://maven.pkg.github.com/j3-signalroom/kafka-isotope'
+            credentials {
+                username = project.findProperty('gpr.user') ?: System.getenv('GITHUB_ACTOR')
+                password = project.findProperty('gpr.key')  ?: System.getenv('GITHUB_TOKEN')
+            }
+        }
+    }
+}
