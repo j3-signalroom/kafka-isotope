@@ -42,7 +42,7 @@ dependencies {
 
 ## **2.0 Put It To Work**
 
-Steps 2.1 and 2.2 are required; 2.3 and 2.4 are optional.
+Steps [§2.1](#21-produce-side--register-the-interceptor) and [§2.2](#22-consume-side--adopt-to-continue-the-trace-or-mark-a-terminal-consume) are **required**; [§2.3](#23-optional-metrics--start-the-prometheus-exporter-once-at-boot) and [§2.4](#24-optional-otel-spans--start-the-opentelemetry-protocol-otlp-span-writer-once-at-boot) are _optional_.
 
 ### **2.1 Produce Side — Register the Interceptor**
 
@@ -103,4 +103,4 @@ Every hop then lands on `isotope_trace_spans` as an [OTLP span](https://opentele
 - [`IsotopeMetrics`](src/main/java/ai/signalroom/kafka/isotope/IsotopeMetrics.java) / [`IsotopeMetricsSink`](src/main/java/ai/signalroom/kafka/isotope/IsotopeMetricsSink.java) — the metrics seam (core stays metrics-free).
 - [`IsotopeSpans`](src/main/java/ai/signalroom/kafka/isotope/IsotopeSpans.java) / [`IsotopeSpanSink`](src/main/java/ai/signalroom/kafka/isotope/IsotopeSpanSink.java) — the span seam (core stays tracing-free).
 
-For the full metrics and PromQL reference and the design rationale (why only three of seven reports are metrics-native), see [docs/metrics.md](https://github.com/j3-signalroom/confluent-kafka-isotope/blob/main/docs/metrics.md) and [docs/design.md](https://github.com/j3-signalroom/confluent-kafka-isotope/blob/main/docs/design.md). The runnable demo and one-command Prometheus + Grafana showcase live in the [`app`](https://github.com/j3-signalroom/confluent-kafka-isotope/tree/main/app) module and [k8s/monitoring](https://github.com/j3-signalroom/confluent-kafka-isotope/tree/main/k8s/monitoring).
+For the full metrics and PromQL reference and the design rationale (why only three of seven reports are metrics-native), see [confluent-kafka-isotope/docs/metrics.md](https://github.com/j3-signalroom/confluent-kafka-isotope/blob/main/docs/metrics.md) and [confluent-kafka-isotope/docs/design.md](https://github.com/j3-signalroom/confluent-kafka-isotope/blob/main/docs/design.md). The runnable demo and one-command Prometheus + Grafana showcase live in the [`confluent-kafka-isotope/app`](https://github.com/j3-signalroom/confluent-kafka-isotope/tree/main/app) module and [confluent-kafka-isotope/k8s/monitoring](https://github.com/j3-signalroom/confluent-kafka-isotope/tree/main/k8s/monitoring).
