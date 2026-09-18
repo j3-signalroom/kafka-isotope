@@ -24,7 +24,7 @@ From isotope headers, seven reports can be derived:
 * Coverage (where traces drop off)
 * Stuck trace detection
 
-Three of them (end-to-end latency, pipeline topology and hop distribution) can be exported directly as [Prometheus metrics](https://prometheus.io/docs/concepts/metric_types/) with the `kafka-isotope-metrics` module. All seven run as Flink SQL in the companion [`confluent-kafka-isotope`](https://github.com/j3-signalroom/confluent-kafka-isotope) demo.
+Three of them (end-to-end latency, pipeline topology and hop distribution) can be exported directly as [Prometheus metrics](https://prometheus.io/docs/concepts/metric_types/) with the `kafka-isotope-metrics` module. All seven run as Flink SQL in the companion demo repository, [`confluent-kafka-isotope`](https://github.com/j3-signalroom/confluent-kafka-isotope).
 
 Separately, the optional `kafka-isotope-otel` module emits each hop as an [OTel span](https://opentelemetry.io/docs/concepts/signals/traces/#spans), so the same traces can be viewed in any [OpenTelemetry Protocol (OTLP)](https://opentelemetry.io/docs/specs/otlp/) backend alongside the rest of your distributed tracing.
 
@@ -84,7 +84,7 @@ flowchart TB
     TOPICS & MARK -.-> FLINK["Flink SQL (confluent-kafka-isotope demo)<br/>all 7 reports"]
 ```
 
-Dashed arrows are optional: the Prometheus metrics and OTel span modules only run after their `start` call, and Flink SQL lives in the companion [`confluent-kafka-isotope`](https://github.com/j3-signalroom/confluent-kafka-isotope) demo repository, not in this library.
+Dashed arrows are optional: the Prometheus metrics and OTel span modules only run after their `start` call, and Flink SQL lives in the companion demo repository, [`confluent-kafka-isotope`](https://github.com/j3-signalroom/confluent-kafka-isotope), not in this library.
 
 ## **2.0 Install using Gradle**
 
@@ -102,4 +102,4 @@ dependencies {
 
 ## **3.0 Demo**
 
-To showcase the capabilities of the `kafka-isotope` library, the companion [`confluent-kafka-isotope`](https://github.com/j3-signalroom/confluent-kafka-isotope) repository provides a runnable reference e-commerce order event pipeline that can be deployed on Confluent Platform on minikube or Confluent Cloud. Both runtimes support all seven Flink reports and an optional Prometheus + Grafana stack (hosted on minikube) for metrics collection and visualization.
+To showcase the capabilities of the `kafka-isotope` library, the companion demo repository, [`confluent-kafka-isotope`](https://github.com/j3-signalroom/confluent-kafka-isotope), provides a runnable reference e-commerce order event pipeline that can be deployed on Confluent Platform on minikube or Confluent Cloud. Both runtimes support all seven Flink reports and an optional Prometheus + Grafana stack (hosted on minikube) for metrics collection and visualization.
