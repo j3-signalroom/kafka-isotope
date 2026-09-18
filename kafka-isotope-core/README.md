@@ -35,7 +35,7 @@ repositories {
 }
 dependencies {
     implementation 'ai.signalroom:kafka-isotope-core:0.19.0'
-    implementation 'ai.signalroom:kafka-isotope-metrics:0.19.0' // optional — only for Prometheus
+    implementation 'ai.signalroom:kafka-isotope-metrics:0.19.0' // optional — only for Prometheus metrics
     implementation 'ai.signalroom:kafka-isotope-otel:0.19.0'    // optional — only for OTel spans
 }
 ```
