@@ -7,6 +7,7 @@ The format is base on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), 
 ## 0.20.0 - TBD
 ### Added
 - Issues[`#29`](https://github.com/j3-signalroom/kafka-isotope/issues/29)
+- Issues[`#36`](https://github.com/j3-signalroom/kafka-isotope/issues/36)
 
 ### Fixed
 - Issues[`#31`](https://github.com/j3-signalroom/kafka-isotope/issues/31)
