@@ -49,7 +49,7 @@ import ai.signalroom.kafka.isotope.IsotopeSpans;
  * span producer and registers the singleton into the core {@link IsotopeSpans}
  * facade, after which {@code IsotopeProducerInterceptor} and
  * {@code IsotopeContext.recordConsume} route their edges here. Until then core
- * uses its no-op sink and propagation runs with zero span overhead.
+ * uses its no-op sink, and a send costs one enabled check and no span work.
  *
  * <h2>Its own producer</h2>
  * The interceptor cannot write through the producer it is attached to — that

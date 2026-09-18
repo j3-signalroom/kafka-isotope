@@ -87,4 +87,4 @@ The other four (merged percentiles, coverage, bipartite topology and stuck trace
 
 ## **6.0 How It Wires In**
 
-`kafka-isotope-core` never depends on a metrics library. Its emissions route through the `IsotopeMetrics` facade to a no-op `IsotopeMetricsSink` until `start` registers `PrometheusIsotopeMetrics` in its place, so propagation runs with zero metrics overhead until you opt in. The exporter keeps its own Prometheus registry rather than the process-global one, so the isotope meters are the only thing on its `/metrics` endpoint.
+`kafka-isotope-core` has no metrics dependency. Its emissions route through the `IsotopeMetrics` facade to a no-op sink (`NoOpMetricsSink`) until `start` registers `PrometheusIsotopeMetrics` in its place. Having this module on the classpath registers nothing by itself. Until you call `start`, each send costs an "is it enabled?" check and no metric work. The exporter keeps its own Prometheus registry rather than the process-global one, so the isotope meters are the only thing on its `/metrics` endpoint.

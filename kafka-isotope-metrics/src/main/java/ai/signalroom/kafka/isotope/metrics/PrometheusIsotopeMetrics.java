@@ -39,8 +39,8 @@ import ai.signalroom.kafka.isotope.IsotopeMetricsSink;
  * (or {@link #ensureRegistry()}) binds a dedicated Prometheus registry and
  * registers the singleton into the core {@link IsotopeMetrics} facade, so the
  * producer interceptor and consume markers in {@code kafka-isotope-core} begin routing
- * their emissions here. Until then the core facade uses its no-op sink, so
- * propagation runs with zero metrics overhead.
+ * their emissions here. Until then the core facade uses its no-op sink, and a
+ * send costs one enabled check and no metric work.
  *
  * <h2>Why three of seven reports</h2>
  * Those three reports are pure scalar aggregation keyed on bounded-cardinality

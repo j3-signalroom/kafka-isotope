@@ -16,8 +16,8 @@ package ai.signalroom.kafka.isotope;
  *
  * <h2>Default and registration</h2>
  * The default sink is {@link NoOpMetricsSink} — {@link #isEnabled()} is
- * {@code false} and every {@code record*} call is inert, so propagation works
- * with zero metrics overhead. The optional {@code kafka-isotope-metrics} module's
+ * {@code false} and every {@code record*} call is inert, so with metrics off a
+ * send costs one enabled check and no metric work. The optional {@code kafka-isotope-metrics} module's
  * {@code PrometheusIsotopeMetrics} calls {@link #register(IsotopeMetricsSink)}
  * when its exporter binds, after which emissions flow to Micrometer/Prometheus.
  *
