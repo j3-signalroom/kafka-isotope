@@ -125,6 +125,11 @@ public final class IsotopeContext {
      * additionally emits the {@code isotope.consume.age} timer that adoption
      * would otherwise miss; when the record was adopted, age was already emitted
      * on the adoption path and is skipped here to avoid a double sample.
+     *
+     * <p>When the optional {@code kafka-isotope-otel} writer is running, this
+     * also emits the consume-edge span for the record — parented to the produce
+     * hop that put it on the topic — provided the record still carries the full
+     * {@link Isotope#HEADER_KEY} JSON.
      */
     public static void recordConsume(
             ConsumerRecord<?, ?> consumerRecord,
@@ -155,6 +160,10 @@ public final class IsotopeContext {
         emitter.send(new ProducerRecord<>(
             topic, null, null, null, null, markerHeaders));
 
+        // One clock read for the meters and the span below, so the latency a
+        // report shows and the end timestamp a span carries can't disagree.
+        long consumeTsMs = System.currentTimeMillis();
+
         // Mirror the produce-side IsotopeProducerInterceptor: also emit the
         // stateless consume-edge metrics (topic→consumer count + time-to-consume
         // latency) to Micrometer for Prometheus/Grafana. No-op unless the app
@@ -164,7 +173,7 @@ public final class IsotopeContext {
                 headerString(consumerRecord, Isotope.HEADER_ORIGIN_TS, null));
             long latencyMs = originTs < 0
                 ? -1L
-                : Math.max(0L, System.currentTimeMillis() - originTs);
+                : Math.max(0L, consumeTsMs - originTs);
             String pipeline      = headerString(consumerRecord, Isotope.HEADER_PIPELINE,       "unknown");
             String originService = headerString(consumerRecord, Isotope.HEADER_ORIGIN_SERVICE, "unknown");
             String svc           = consumerService == null ? "unknown" : consumerService;
@@ -181,6 +190,30 @@ public final class IsotopeContext {
             // definition — the same now − originTs.)
             if (originTs >= 0 && current() == null) {
                 IsotopeMetrics.recordConsumeAge(pipeline, originService, svc, thisTopic, latencyMs);
+            }
+        }
+
+        /*
+         * Consume-edge span, the span-shaped companion to the marker above.
+         * Needs the hop list (the last hop is the span's parent), so it reads
+         * the full x-isotope JSON rather than the scalars the marker forwards.
+         * Records carrying only scalars — including the markers this method
+         * writes — therefore produce no span, which is what we want: markers are
+         * report input, not pipeline edges.
+         */
+        if (IsotopeSpans.isEnabled()) {
+            Isotope iso = null;
+            try {
+                iso = Isotope.fromHeaders(consumerRecord.headers());
+            } catch (RuntimeException e) {
+                // Malformed or absent isotope JSON — skip the span, keep the marker.
+            }
+            if (iso != null) {
+                IsotopeSpans.recordConsumeSpan(
+                    iso,
+                    consumerService == null ? "unknown" : consumerService,
+                    consumerRecord.topic(),
+                    consumeTsMs);
             }
         }
     }

@@ -14,7 +14,7 @@ Built entirely on Kafka’s public extension points—a `ProducerInterceptor` pl
 * No sidecar agents
 * No vendor lock-in
 
-From isotope headers, `kafka-isotope` derives trace data that can be analyzed directly or exported as Prometheus metrics to support:
+From isotope headers, `kafka-isotope` derives trace data that can be analyzed directly, exported as Prometheus metrics, or emitted as OpenTelemetry spans to support:
 
 * End-to-end latency
 * Pipeline topology
@@ -42,8 +42,9 @@ This makes `kafka-isotope` a lightweight but powerful observability layer for Ka
 |---|---|---|---|
 | **kafka-isotope-core** | `ai.signalroom:kafka-isotope-core` | Jackson, SLF4J (`kafka-clients` is `compileOnly`) | Trace **propagation** — interceptor, headers, consume markers. |
 | **kafka-isotope-metrics** | `ai.signalroom:kafka-isotope-metrics` | kafka-isotope-core + Micrometer/Prometheus | Optional `/metrics` exporter for the stateless reports. |
+| **kafka-isotope-otel** | `ai.signalroom:kafka-isotope-otel` | kafka-isotope-core + OTLP protobuf | Optional **span** writer — one OTLP span per hop on a Kafka topic, read by a stock OpenTelemetry Collector. |
 
-`kafka-isotope-core` never depends on a metrics library: emission routes through a no-op `IsotopeMetricsSink` until `kafka-isotope-metrics` registers the Prometheus one, so propagation runs with zero metrics overhead.
+`kafka-isotope-core` never depends on a metrics or tracing library: emission routes through a no-op `IsotopeMetricsSink` and a no-op `IsotopeSpanSink` until `kafka-isotope-metrics` and `kafka-isotope-otel` register the real ones, so propagation runs with zero overhead from either.
 
 ## **2.0 Install using Gradle**
 
@@ -52,12 +53,13 @@ repositories {
     mavenCentral()
 }
 dependencies {
-    implementation 'ai.signalroom:kafka-isotope-core:0.18.0'
-    implementation 'ai.signalroom:kafka-isotope-metrics:0.18.0' // optional — only for Prometheus
+    implementation 'ai.signalroom:kafka-isotope-core:0.19.0'
+    implementation 'ai.signalroom:kafka-isotope-metrics:0.19.0' // optional — only for Prometheus
+    implementation 'ai.signalroom:kafka-isotope-otel:0.19.0'    // optional — only for OTel spans
 }
 ```
 
-See **[kafka-isotope-core/README.md](kafka-isotope-core/README.md)** for the full adopter quickstart (registering the interceptor, adopting/marking on consume, starting the exporter).
+See **[kafka-isotope-core/README.md](kafka-isotope-core/README.md)** for the full adopter quickstart (registering the interceptor, adopting/marking on consume, starting the exporter). The optional modules have their own: **[kafka-isotope-metrics/README.md](kafka-isotope-metrics/README.md)** for the Prometheus metrics, and **[kafka-isotope-otel/README.md](kafka-isotope-otel/README.md)** for the span writer and the Collector config that reads it.
 
 ## **3.0 Demo**
 

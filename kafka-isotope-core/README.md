@@ -13,11 +13,13 @@ Two artifacts, so you only take what you need:
 |---|---|---|---|
 | **kafka-isotope-core** | `ai.signalroom:kafka-isotope-core` | Jackson, SLF4J (`kafka-clients` is `compileOnly`) | Trace **propagation** — the interceptor, headers, consume markers. |
 | **kafka-isotope-metrics** | `ai.signalroom:kafka-isotope-metrics` | kafka-isotope-core + Micrometer/Prometheus | Optional `/metrics` exporter for the stateless reports. |
+| **kafka-isotope-otel** | `ai.signalroom:kafka-isotope-otel` | kafka-isotope-core + OTLP protobuf | Optional span writer — one OTLP span per hop on a Kafka topic. |
 
-> `kafka-isotope-core` never depends on a metrics library. Emission is routed through a
-> no-op [`IsotopeMetricsSink`](src/main/java/ai/signalroom/kafka/isotope/IsotopeMetricsSink.java)
-> until `kafka-isotope-metrics` registers the Prometheus one — so propagation runs with
-> zero metrics overhead.
+> `kafka-isotope-core` never depends on a metrics or tracing library. Emission is routed
+> through a no-op [`IsotopeMetricsSink`](src/main/java/ai/signalroom/kafka/isotope/IsotopeMetricsSink.java)
+> and a no-op [`IsotopeSpanSink`](src/main/java/ai/signalroom/kafka/isotope/IsotopeSpanSink.java)
+> until `kafka-isotope-metrics` and `kafka-isotope-otel` register the real ones — so
+> propagation runs with zero overhead from either.
 
 ## Install (Gradle, GitHub Packages)
 
@@ -26,8 +28,9 @@ repositories {
     maven { url 'https://maven.pkg.github.com/j3-signalroom/kafka-isotope' }
 }
 dependencies {
-    implementation 'ai.signalroom:kafka-isotope-core:0.18.0'
-    implementation 'ai.signalroom:kafka-isotope-metrics:0.18.0' // optional — only for Prometheus
+    implementation 'ai.signalroom:kafka-isotope-core:0.19.0'
+    implementation 'ai.signalroom:kafka-isotope-metrics:0.19.0' // optional — only for Prometheus
+    implementation 'ai.signalroom:kafka-isotope-otel:0.19.0'    // optional — only for OTel spans
 }
 ```
 
@@ -66,7 +69,19 @@ PrometheusIsotopeMetrics.start(9404); // serves GET /metrics; no-op on a port cl
 
 This serves `isotope_hop_latency_*`, `isotope_hop_records_total`, and the
 consume-side meters at `http://localhost:9404/metrics`. Until you call `start`,
-the interceptor's metric calls are inert.
+the interceptor's metric calls are inert. See [kafka-isotope-metrics/README.md](../kafka-isotope-metrics/README.md).
+
+**4. (Optional) Spans — start the OTLP span writer once at boot.**
+
+```java
+import ai.signalroom.kafka.isotope.otel.KafkaOtlpSpanSink;
+
+KafkaOtlpSpanSink.start(Map.of(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "kafka:9092"));
+```
+
+Every hop then lands on `isotope_trace_spans` as an OTLP span, ready for a stock
+OpenTelemetry Collector. Queued off the hot path and dropped rather than allowed
+to delay a `send()`. See [kafka-isotope-otel/README.md](../kafka-isotope-otel/README.md).
 
 ## What's where
 
@@ -74,6 +89,7 @@ the interceptor's metric calls are inert.
 - [`IsotopeContext`](src/main/java/ai/signalroom/kafka/isotope/IsotopeContext.java) — thread-local context, `adoptFromRecord`, `recordConsume`.
 - [`IsotopeProducerInterceptor`](src/main/java/ai/signalroom/kafka/isotope/IsotopeProducerInterceptor.java) — the `ProducerInterceptor` that stamps and hops.
 - [`IsotopeMetrics`](src/main/java/ai/signalroom/kafka/isotope/IsotopeMetricsSink.java) / `IsotopeMetricsSink` — the metrics seam (core stays metrics-free).
+- [`IsotopeSpans`](src/main/java/ai/signalroom/kafka/isotope/IsotopeSpans.java) / [`IsotopeSpanSink`](src/main/java/ai/signalroom/kafka/isotope/IsotopeSpanSink.java) — the span seam (core stays tracing-free).
 
 For the full meter/PromQL reference and the design rationale (why only three of
 seven reports are metrics-native), see [docs/metrics.md](https://github.com/j3-signalroom/confluent-kafka-isotope/blob/main/docs/metrics.md) and

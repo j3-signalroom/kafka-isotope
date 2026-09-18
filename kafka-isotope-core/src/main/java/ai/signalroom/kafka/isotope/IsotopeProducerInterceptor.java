@@ -45,6 +45,16 @@ public class IsotopeProducerInterceptor<K, V> implements ProducerInterceptor<K, 
     private String serviceName = "unknown";
     private String pipelineName = "unknown";
 
+    /*
+     * Whether this interceptor holds a reference on the span sink. Recorded at
+     * configure() time and handed back in close(): the OTLP sink's producer is
+     * process-wide and shared by every interceptor instance, so it may only be
+     * torn down once the last of them is gone. False whenever spans were off
+     * when this interceptor was configured, which keeps a sink registered later
+     * from ever seeing a release it never handed out.
+     */
+    private boolean spansAcquired;
+
     /**
      * This method is called once per interceptor instance, which is typically once per producer. It reads
      * {@value #SERVICE_NAME_CONFIG} and {@value #PIPELINE_NAME_CONFIG} from the provided configs map, and
@@ -69,6 +79,10 @@ public class IsotopeProducerInterceptor<K, V> implements ProducerInterceptor<K, 
             LOG.warn("{} not configured; new traces will be tagged pipeline=\"unknown\"",
                 PIPELINE_NAME_CONFIG);
         }
+
+        // Claim a reference on the span sink (a no-op unless the optional
+        // kafka-isotope-otel writer is running), released in close().
+        spansAcquired = IsotopeSpans.acquire();
     }
 
     /**
@@ -142,6 +156,16 @@ public class IsotopeProducerInterceptor<K, V> implements ProducerInterceptor<K, 
                 iso.hops().size());
         }
 
+        /*
+         * Emit the span for the hop just appended. No-op unless the optional
+         * kafka-isotope-otel writer is running, and when it is, this only drops
+         * a small event on a bounded queue that a background thread drains —
+         * onSend runs on the caller's thread and never waits on a span.
+         */
+        if (IsotopeSpans.isEnabled()) {
+            IsotopeSpans.recordHopSpan(iso, serviceName, producerRecord.topic(), hopTsMs);
+        }
+
         return producerRecord;
     }
 
@@ -180,8 +204,15 @@ public class IsotopeProducerInterceptor<K, V> implements ProducerInterceptor<K, 
         // --- no-op
     }
 
+    /**
+     * Hands back the span-sink reference taken in {@link #configure}. The OTLP
+     * span writer's producer is shared across the JVM, so it is closed by
+     * whichever interceptor releases the last reference, not by the first one to
+     * close. No-op when spans were never enabled.
+     */
     @Override
     public void close() {
-        // --- no-op
+        IsotopeSpans.release(spansAcquired);
+        spansAcquired = false;
     }
 }
