@@ -1,6 +1,6 @@
 # `kafka-isotope` Library
 
-`kafka-isotope` provides **end-to-end record tracing for Apache Kafka** using Kafka record headers, a `ProducerInterceptor`, and optional Prometheus metrics.
+`kafka-isotope` provides **end-to-end record tracing for Apache Kafka** using Kafka record headers, a `ProducerInterceptor`, and optional [Prometheus metrics](https://prometheus.io/docs/concepts/metric_types/) and [OpenTelemetry (OTel) spans](https://opentelemetry.io/docs/concepts/signals/traces/#spans).
 
 It works by attaching lightweight tracing artifacts—called *isotopes*—to records as they move through Kafka event pipelines.
 
@@ -24,9 +24,9 @@ From isotope headers, seven reports can be derived:
 * Coverage (where traces drop off)
 * Stuck trace detection
 
-Three of them (end-to-end latency, pipeline topology and hop distribution) can be exported directly as [Prometheus metrics](https://prometheus.io/docs/concepts/metric_types/) with the `kafka-isotope-metrics` module. All seven run as Flink SQL in the companion [confluent-kafka-isotope](https://github.com/j3-signalroom/confluent-kafka-isotope) demo.
+Three of them (end-to-end latency, pipeline topology and hop distribution) can be exported directly as [Prometheus metrics](https://prometheus.io/docs/concepts/metric_types/) with the `kafka-isotope-metrics` module. All seven run as Flink SQL in the companion [`confluent-kafka-isotope`](https://github.com/j3-signalroom/confluent-kafka-isotope) demo.
 
-Separately, the optional `kafka-isotope-otel` module emits each hop as an [OpenTelemetry (OTel) span](https://opentelemetry.io/docs/concepts/signals/traces/#spans), so the same traces can be viewed in any [OpenTelemetry Protocol (OTLP)](https://opentelemetry.io/docs/specs/otlp/) backend alongside the rest of your distributed tracing.
+Separately, the optional `kafka-isotope-otel` module emits each hop as an [OTel span](https://opentelemetry.io/docs/concepts/signals/traces/#spans), so the same traces can be viewed in any [OpenTelemetry Protocol (OTLP)](https://opentelemetry.io/docs/specs/otlp/) backend alongside the rest of your distributed tracing.
 
 This makes `kafka-isotope` a lightweight but powerful observability layer for Kafka-based event-driven architectures.
 
@@ -47,7 +47,7 @@ This makes `kafka-isotope` a lightweight but powerful observability layer for Ka
 |---|---|---|---|
 | [**kafka-isotope-core**](kafka-isotope-core/README.md) | `ai.signalroom:kafka-isotope-core` | Jackson, SLF4J (`kafka-clients` is `compileOnly`) | Trace **propagation** — interceptor, headers, consume markers. |
 | [**kafka-isotope-metrics**](kafka-isotope-metrics/README.md) | `ai.signalroom:kafka-isotope-metrics` | kafka-isotope-core + Micrometer/Prometheus | Optional `/metrics` exporter for the stateless reports. |
-| [**kafka-isotope-otel**](kafka-isotope-otel/README.md) | `ai.signalroom:kafka-isotope-otel` | kafka-isotope-core + OTLP protobuf | Optional **span** writer — one [OTel span](https://opentelemetry.io/docs/concepts/signals/traces/#spans) per hop on a Kafka topic, read by a stock OpenTelemetry (OTel) Collector. |
+| [**kafka-isotope-otel**](kafka-isotope-otel/README.md) | `ai.signalroom:kafka-isotope-otel` | kafka-isotope-core + OTLP protobuf | Optional **span** writer — one [OTel span](https://opentelemetry.io/docs/concepts/signals/traces/#spans) per hop on a Kafka topic, read by a stock OTel Collector. |
 
 `kafka-isotope-core` has no metrics or tracing dependency. It routes every emission through two sinks that start out as no-ops (`NoOpMetricsSink` and `NoOpSpanSink`). Adding `kafka-isotope-metrics` or `kafka-isotope-otel` to the classpath doesn't change that: the real sink is registered only when your application calls `PrometheusIsotopeMetrics.start(port)` or `KafkaOtlpSpanSink.start(config)`, and stays a no-op if that call fails. Until then, each record costs an "_is it enabled?_" check and no metric or span work.
 
@@ -84,7 +84,7 @@ flowchart TB
     TOPICS & MARK -.-> FLINK["Flink SQL (confluent-kafka-isotope demo)<br/>all 7 reports"]
 ```
 
-Dashed arrows are optional: the Prometheus metrics and OTEL span modules only run after their `start` call, and Flink SQL lives in the companion demo, not in this library.
+Dashed arrows are optional: the Prometheus metrics and OTel span modules only run after their `start` call, and Flink SQL lives in the companion [`confluent-kafka-isotope`](https://github.com/j3-signalroom/confluent-kafka-isotope) demo repository, not in this library.
 
 ## **2.0 Install using Gradle**
 
