@@ -14,14 +14,19 @@ Built entirely on Kafka’s public extension points—a `ProducerInterceptor` pl
 * No sidecar agents
 * No vendor lock-in
 
-From isotope headers, `kafka-isotope` derives trace data that can be analyzed directly, exported as [Prometheus metrics](https://prometheus.io/docs/concepts/metric_types/), or emitted as [OpenTelemetry (OTel) spans](https://opentelemetry.io/docs/concepts/signals/traces/#spans) to support:
+From isotope headers, seven reports can be derived:
 
 * End-to-end latency
+* Latency percentiles (p50/p95/p99)
 * Pipeline topology
+* Bipartite topology (producer → topic → consumer)
 * Hop distribution
-* Drift detection
+* Coverage (where traces drop off)
 * Stuck trace detection
-* Per-trace forensic replay
+
+Three of them (end-to-end latency, pipeline topology and hop distribution) can be exported directly as [Prometheus metrics](https://prometheus.io/docs/concepts/metric_types/) with the `kafka-isotope-metrics` module. All seven run as Flink SQL in the companion [confluent-kafka-isotope](https://github.com/j3-signalroom/confluent-kafka-isotope) demo.
+
+Separately, the optional `kafka-isotope-otel` module emits each hop as an [OpenTelemetry (OTel) span](https://opentelemetry.io/docs/concepts/signals/traces/#spans), so the same traces can be viewed in any OTLP backend alongside the rest of your distributed tracing.
 
 This makes `kafka-isotope` a lightweight but powerful observability layer for Kafka-based event-driven architectures.
 
