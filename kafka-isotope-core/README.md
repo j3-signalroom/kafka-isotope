@@ -15,11 +15,14 @@ Two artifacts, so you only take what you need:
 | **kafka-isotope-metrics** | `ai.signalroom:kafka-isotope-metrics` | kafka-isotope-core + Micrometer/Prometheus | Optional `/metrics` exporter for the stateless reports. |
 | **kafka-isotope-otel** | `ai.signalroom:kafka-isotope-otel` | kafka-isotope-core + OTLP protobuf | Optional span writer — one OTLP span per hop on a Kafka topic. |
 
-> `kafka-isotope-core` never depends on a metrics or tracing library. Emission is routed
-> through a no-op [`IsotopeMetricsSink`](src/main/java/ai/signalroom/kafka/isotope/IsotopeMetricsSink.java)
-> and a no-op [`IsotopeSpanSink`](src/main/java/ai/signalroom/kafka/isotope/IsotopeSpanSink.java)
-> until `kafka-isotope-metrics` and `kafka-isotope-otel` register the real ones — so
-> propagation runs with zero overhead from either.
+> `kafka-isotope-core` has no metrics or tracing dependency. Emission is routed through
+> the [`IsotopeMetricsSink`](src/main/java/ai/signalroom/kafka/isotope/IsotopeMetricsSink.java)
+> and [`IsotopeSpanSink`](src/main/java/ai/signalroom/kafka/isotope/IsotopeSpanSink.java)
+> interfaces, which start out as no-ops. Adding `kafka-isotope-metrics` or
+> `kafka-isotope-otel` to the classpath doesn't change that: the real sink is registered
+> only when your application calls `PrometheusIsotopeMetrics.start(port)` or
+> `KafkaOtlpSpanSink.start(config)` (steps 3 and 4 below), and stays a no-op if that call
+> fails. Until then, each record costs an "is it enabled?" check and no metric or span work.
 
 ## Install (Gradle, GitHub Packages)
 

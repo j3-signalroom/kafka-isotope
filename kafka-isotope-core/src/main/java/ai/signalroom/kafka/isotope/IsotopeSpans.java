@@ -16,8 +16,8 @@ package ai.signalroom.kafka.isotope;
  *
  * <h2>Default and registration</h2>
  * The default sink is {@link NoOpSpanSink} — {@link #isEnabled()} is
- * {@code false} and every {@code record*Span} call is inert, so propagation
- * works with zero span overhead. The optional {@code kafka-isotope-otel}
+ * {@code false} and every {@code record*Span} call is inert, so with spans off a
+ * send or acknowledgement costs one enabled check and no span work. The optional {@code kafka-isotope-otel}
  * module's {@code KafkaOtlpSpanSink} calls {@link #register(IsotopeSpanSink)}
  * when it starts, after which each hop is written to the spans topic as OTLP.
  *

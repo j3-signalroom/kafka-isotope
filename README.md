@@ -44,7 +44,7 @@ This makes `kafka-isotope` a lightweight but powerful observability layer for Ka
 | **kafka-isotope-metrics** | `ai.signalroom:kafka-isotope-metrics` | kafka-isotope-core + Micrometer/Prometheus | Optional `/metrics` exporter for the stateless reports. |
 | **kafka-isotope-otel** | `ai.signalroom:kafka-isotope-otel` | kafka-isotope-core + OTLP protobuf | Optional **span** writer — one OTLP span per hop on a Kafka topic, read by a stock OpenTelemetry Collector. |
 
-`kafka-isotope-core` never depends on a metrics or tracing library: emission routes through a no-op `IsotopeMetricsSink` and a no-op `IsotopeSpanSink` until `kafka-isotope-metrics` and `kafka-isotope-otel` register the real ones, so propagation runs with zero overhead from either.
+`kafka-isotope-core` has no metrics or tracing dependency. It routes every emission through two sinks that start out as no-ops (`NoOpMetricsSink` and `NoOpSpanSink`). Adding `kafka-isotope-metrics` or `kafka-isotope-otel` to the classpath doesn't change that: the real sink is registered only when your application calls `PrometheusIsotopeMetrics.start(port)` or `KafkaOtlpSpanSink.start(config)`, and stays a no-op if that call fails. Until then, each record costs an "is it enabled?" check and no metric or span work.
 
 ## **2.0 Install using Gradle**
 
