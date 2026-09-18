@@ -8,7 +8,7 @@ Nothing new runs in your pipeline. Every value comes from what `IsotopeProducerI
 
 **Table of Contents**
 <!-- toc -->
-- [**1.0 Install**](#10-install)
+- [**1.0 Install using Gradle**](#10-install-using-gradle)
 - [**2.0 Put It To Work**](#20-put-it-to-work)
   + [**2.1 Prometheus Scrape Config**](#21-prometheus-scrape-config)
 - [**3.0 What It Emits**](#30-what-it-emits)
@@ -19,12 +19,16 @@ Nothing new runs in your pipeline. Every value comes from what `IsotopeProducerI
 
 ---
 
-## **1.0 Install**
+## **1.0 Install using Gradle**
 
 ```groovy
+repositories {
+    mavenCentral()
+}
+
 dependencies {
     implementation 'ai.signalroom:kafka-isotope-core:0.19.0'
-    implementation 'ai.signalroom:kafka-isotope-metrics:0.19.0' // optional — only for Prometheus
+    implementation 'ai.signalroom:kafka-isotope-metrics:0.19.0' // optional — only for Prometheus metrics
 }
 ```
 

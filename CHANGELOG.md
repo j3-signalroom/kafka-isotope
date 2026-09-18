@@ -13,6 +13,7 @@ The format is base on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), 
 - Issues[`#11`](https://github.com/j3-signalroom/kafka-isotope/issues/11)
 - Issues[`#16`](https://github.com/j3-signalroom/kafka-isotope/issues/16)
 - Issues[`#22`](https://github.com/j3-signalroom/kafka-isotope/issues/22)
+- Issues[`#25`](https://github.com/j3-signalroom/kafka-isotope/issues/25)
 
 ### Fixed
 - Issues[`#20`](https://github.com/j3-signalroom/kafka-isotope/issues/20)
