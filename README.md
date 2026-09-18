@@ -51,6 +51,41 @@ This makes `kafka-isotope` a lightweight but powerful observability layer for Ka
 
 `kafka-isotope-core` has no metrics or tracing dependency. It routes every emission through two sinks that start out as no-ops (`NoOpMetricsSink` and `NoOpSpanSink`). Adding `kafka-isotope-metrics` or `kafka-isotope-otel` to the classpath doesn't change that: the real sink is registered only when your application calls `PrometheusIsotopeMetrics.start(port)` or `KafkaOtlpSpanSink.start(config)`, and stays a no-op if that call fails. Until then, each record costs an "_is it enabled?_" check and no metric or span work.
 
+```mermaid
+flowchart TB
+    subgraph APP["Your application"]
+        direction LR
+        PROD["Producer<br/>send()"]
+        CONS["Consumer<br/>poll()"]
+    end
+
+    subgraph CORE["kafka-isotope-core"]
+        direction LR
+        INT["IsotopeProducerInterceptor<br/>stamps trace ID · appends hop"]
+        CTX["IsotopeContext<br/>adoptFromRecord() to re-produce<br/>recordConsume() at a terminal stage"]
+        MSINK["IsotopeMetrics<br/>NoOpMetricsSink until started"]
+        SSINK["IsotopeSpans<br/>NoOpSpanSink until started"]
+    end
+
+    PROD --> INT
+    CONS --> CTX
+    INT -->|"records + isotope headers"| TOPICS[("Kafka topics")]
+    CTX -->|"consume-edge markers"| MARK[("isotope_consume_edge_markers")]
+    TOPICS --> CONS
+
+    INT & CTX --> MSINK & SSINK
+
+    MSINK -. "PrometheusIsotopeMetrics.start(port)" .-> MET["kafka-isotope-metrics<br/>GET /metrics"]
+    MET --> PROM["Prometheus<br/>3 stateless reports"]
+
+    SSINK -. "KafkaOtlpSpanSink.start(config)" .-> OTEL["kafka-isotope-otel<br/>one span per hop"]
+    OTEL --> SPANS[("isotope_trace_spans")] --> COL["OTel Collector"] --> BACK["Any OTLP backend"]
+
+    TOPICS & MARK -.-> FLINK["Flink SQL (confluent-kafka-isotope demo)<br/>all 7 reports"]
+```
+
+Dashed arrows are optional: the Prometheus metrics and OTEL span modules only run after their `start` call, and Flink SQL lives in the companion demo, not in this library.
+
 ## **2.0 Install using Gradle**
 
 ```groovy
