@@ -64,7 +64,8 @@ mavenPublishing {
         name = 'Isotope Core'
         description = 'Kafka record-tracing via interceptors + headers: ' +
             'UUIDv7 trace IDs, hop accumulation, and the bipartite consume markers. ' +
-            'No metrics dependency — add kafka-isotope-metrics for Prometheus.'
+            'No Prometheus metrics dependency — add kafka-isotope-metrics for Prometheus.' +
+            'No OTel spans dependency – add kafka-isotope-otel for OTel spans.'
         url = 'https://github.com/j3-signalroom/kafka-isotope'
         licenses {
             license {
