@@ -26,7 +26,7 @@ From isotope headers, seven reports can be derived:
 
 Three of them (end-to-end latency, pipeline topology and hop distribution) can be exported directly as [Prometheus metrics](https://prometheus.io/docs/concepts/metric_types/) with the `kafka-isotope-metrics` module. All seven run as Flink SQL in the companion [confluent-kafka-isotope](https://github.com/j3-signalroom/confluent-kafka-isotope) demo.
 
-Separately, the optional `kafka-isotope-otel` module emits each hop as an [OpenTelemetry (OTel) span](https://opentelemetry.io/docs/concepts/signals/traces/#spans), so the same traces can be viewed in any OTLP backend alongside the rest of your distributed tracing.
+Separately, the optional `kafka-isotope-otel` module emits each hop as an [OpenTelemetry (OTel) span](https://opentelemetry.io/docs/concepts/signals/traces/#spans), so the same traces can be viewed in any [OpenTelemetry Protocol (OTLP)](https://opentelemetry.io/docs/specs/otlp/) backend alongside the rest of your distributed tracing.
 
 This makes `kafka-isotope` a lightweight but powerful observability layer for Kafka-based event-driven architectures.
 
