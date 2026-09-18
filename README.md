@@ -2,7 +2,7 @@
 
 `kafka-isotope` provides **end-to-end record tracing for Apache Kafka** using Kafka record headers, a `ProducerInterceptor`, and optional Prometheus metrics.
 
-It works by attaching lightweight tracing artifacts—called *isotopes*—to records as they move through Kafka pipelines.
+It works by attaching lightweight tracing artifacts—called *isotopes*—to records as they move through Kafka event pipelines.
 
 An isotope is a small tracing payload carried in Kafka record headers. Like a biochemical isotope used to trace molecules through a metabolic pathway, it enables the journey of a record through an event-driven architecture to be observed and analyzed.
 
@@ -14,7 +14,7 @@ Built entirely on Kafka’s public extension points—a `ProducerInterceptor` pl
 * No sidecar agents
 * No vendor lock-in
 
-From isotope headers, `kafka-isotope` derives trace data that can be analyzed directly, exported as Prometheus metrics, or emitted as OpenTelemetry spans to support:
+From isotope headers, `kafka-isotope` derives trace data that can be analyzed directly, exported as [Prometheus metrics](https://prometheus.io/docs/concepts/metric_types/), or emitted as [OpenTelemetry (OTel) spans](https://opentelemetry.io/docs/concepts/signals/traces/#spans) to support:
 
 * End-to-end latency
 * Pipeline topology
