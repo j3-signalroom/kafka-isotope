@@ -67,4 +67,4 @@ dependencies {
 ## **3.0 Demo**
 
 A runnable reference event pipeline (Confluent Platform on minikube / Confluent Cloud, the seven Flink reports, and a one-command Prometheus + Grafana showcase) lives in the companion repo:
-[j3-signalroom/confluent-kafka-isotope](https://github.com/j3-signalroom/confluent-kafka-isotope).
+[`confluent-kafka-isotope`](https://github.com/j3-signalroom/confluent-kafka-isotope).
