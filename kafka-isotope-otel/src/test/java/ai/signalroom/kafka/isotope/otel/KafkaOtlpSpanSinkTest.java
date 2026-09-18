@@ -11,29 +11,36 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.producer.Callback;
+import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.MockProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.header.internals.RecordHeaders;
 import org.apache.kafka.common.serialization.ByteArraySerializer;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
 import io.opentelemetry.proto.collector.trace.v1.ExportTraceServiceRequest;
+import io.opentelemetry.proto.common.v1.KeyValue;
 import io.opentelemetry.proto.trace.v1.Span;
+import io.opentelemetry.proto.trace.v1.Status;
 
 import ai.signalroom.kafka.isotope.Isotope;
 import ai.signalroom.kafka.isotope.IsotopeContext;
@@ -102,6 +109,31 @@ class KafkaOtlpSpanSinkTest {
         return i;
     }
 
+    /**
+     * Sends a record through the interceptor and then reports it written, as a
+     * kafka-clients 4.1+ producer would once the broker answers — the point at
+     * which the hop span is emitted.
+     */
+    private static ProducerRecord<byte[], byte[]> sendAndAck(
+            IsotopeProducerInterceptor<byte[], byte[]> interceptor, int partition, long offset) {
+        ProducerRecord<byte[], byte[]> sent = interceptor.onSend(new ProducerRecord<>(TOPIC_A, null, null));
+        interceptor.onAcknowledgement(
+            new RecordMetadata(new TopicPartition(TOPIC_A, partition), offset, 0, 0L, 0, 0),
+            null, sent.headers());
+        return sent;
+    }
+
+    private static String attr(Span span, String key) {
+        for (KeyValue kv : span.getAttributesList()) {
+            if (kv.getKey().equals(key)) {
+                return kv.getValue().hasIntValue()
+                    ? Long.toString(kv.getValue().getIntValue())
+                    : kv.getValue().getStringValue();
+            }
+        }
+        return null;
+    }
+
     private static ConsumerRecord<byte[], byte[]> asConsumed(ProducerRecord<byte[], byte[]> produced) {
         RecordHeaders headers = new RecordHeaders();
         produced.headers().forEach(h -> headers.add(h.key(), h.value()));
@@ -160,8 +192,7 @@ class KafkaOtlpSpanSinkTest {
         KafkaOtlpSpanSink.startWithProducer(spanProducer, SPANS_TOPIC, 100);
         assertTrue(IsotopeSpans.isEnabled(), "starting registers the sink into core");
 
-        ProducerRecord<byte[], byte[]> produced = interceptor().onSend(
-            new ProducerRecord<>(TOPIC_A, null, null));
+        ProducerRecord<byte[], byte[]> produced = sendAndAck(interceptor(), 2, 99L);
         Isotope trace = Isotope.fromHeaders(produced.headers());
 
         List<Span> spans = awaitSpans(spanProducer, 1);
@@ -170,6 +201,10 @@ class KafkaOtlpSpanSinkTest {
         assertEquals(Span.SpanKind.SPAN_KIND_PRODUCER, span.getKind());
         assertEquals("send " + TOPIC_A, span.getName());
         assertArrayEquals(trace.traceId(), span.getTraceId().toByteArray());
+        assertEquals("2", attr(span, "messaging.destination.partition.id"),
+            "the acknowledgement supplies where the record landed");
+        assertEquals("99", attr(span, "messaging.kafka.offset"));
+        assertEquals(Status.StatusCode.STATUS_CODE_UNSET, span.getStatus().getCode());
 
         ProducerRecord<byte[], byte[]> spanRecord = spanProducer.history().get(0);
         assertArrayEquals(trace.traceId(), spanRecord.key(),
@@ -184,8 +219,7 @@ class KafkaOtlpSpanSinkTest {
         RecordingProducer spanProducer = new RecordingProducer();
         KafkaOtlpSpanSink.startWithProducer(spanProducer, SPANS_TOPIC, 100);
 
-        ProducerRecord<byte[], byte[]> produced = interceptor().onSend(
-            new ProducerRecord<>(TOPIC_A, null, null));
+        ProducerRecord<byte[], byte[]> produced = sendAndAck(interceptor(), 2, 99L);
         MockProducer<byte[], byte[]> markers = new MockProducer<>(
             true, null, new ByteArraySerializer(), new ByteArraySerializer());
         IsotopeContext.recordConsume(asConsumed(produced), "shipping-notification-service", markers);
@@ -211,7 +245,7 @@ class KafkaOtlpSpanSinkTest {
         IsotopeProducerInterceptor<byte[], byte[]> producing = interceptor();
 
         // The first span takes the writer thread into send(), where it parks.
-        producing.onSend(new ProducerRecord<>(TOPIC_A, null, null));
+        sendAndAck(producing, 0, 0L);
         assertTrue(spanProducer.inSend.await(WAIT_MS, TimeUnit.MILLISECONDS),
             "the writer should have reached the producer");
 
@@ -220,13 +254,14 @@ class KafkaOtlpSpanSinkTest {
         long start = System.currentTimeMillis();
         for (int i = 0; i < 5; i++) {
             IsotopeContext.clear();
-            producing.onSend(new ProducerRecord<>(TOPIC_A, null, null));
+            sendAndAck(producing, 0, i + 1L);
         }
         long elapsed = System.currentTimeMillis() - start;
 
         assertEquals(3, KafkaOtlpSpanSink.droppedSpans(),
             "two fit in the queue, three are dropped");
-        assertTrue(elapsed < 1_000, "sends did not wait on the stalled writer (took " + elapsed + "ms)");
+        assertTrue(elapsed < 1_000,
+            "neither send() nor the acknowledgement waited on the stalled writer (took " + elapsed + "ms)");
 
         spanProducer.release.countDown();
     }
@@ -273,10 +308,47 @@ class KafkaOtlpSpanSinkTest {
         RecordingProducer spanProducer = new RecordingProducer();
         KafkaOtlpSpanSink.startWithProducer(spanProducer, SPANS_TOPIC, 100);
 
-        interceptor().onSend(new ProducerRecord<>(TOPIC_A, null, null));
+        sendAndAck(interceptor(), 0, 0L);
         KafkaOtlpSpanSink.close();
 
         assertFalse(awaitSpans(spanProducer, 1).isEmpty(),
             "shutdown drains what was still queued");
+    }
+
+    @Test
+    @Timeout(60)
+    void aRealProducersFailedSendReachesTheSpanAsAnError() throws InterruptedException {
+        // A real KafkaProducer, not a mock, so this checks Kafka's side of the
+        // contract: the headers it hands onAcknowledgement are those of the
+        // record as sent — stamped by onSend — on the send-failure path too.
+        RecordingProducer spanProducer = new RecordingProducer();
+        KafkaOtlpSpanSink.startWithProducer(spanProducer, SPANS_TOPIC, 100);
+
+        Map<String, Object> config = Map.of(
+            ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:1", // nothing listens: metadata never arrives
+            ProducerConfig.MAX_BLOCK_MS_CONFIG, 250,
+            ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class.getName(),
+            ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class.getName(),
+            ProducerConfig.INTERCEPTOR_CLASSES_CONFIG, IsotopeProducerInterceptor.class.getName(),
+            IsotopeProducerInterceptor.SERVICE_NAME_CONFIG, SERVICE,
+            IsotopeProducerInterceptor.PIPELINE_NAME_CONFIG, PIPELINE);
+
+        KafkaProducer<byte[], byte[]> real = new KafkaProducer<>(config);
+        try {
+            Future<RecordMetadata> result = real.send(new ProducerRecord<>(TOPIC_A, null, null));
+            assertThrows(ExecutionException.class, result::get, "the send times out waiting for metadata");
+        } finally {
+            real.close(Duration.ofSeconds(2));
+        }
+
+        List<Span> spans = awaitSpans(spanProducer, 1);
+        assertEquals(1, spans.size(), "the failed produce is still reported, once");
+        Span span = spans.get(0);
+        assertEquals(Span.SpanKind.SPAN_KIND_PRODUCER, span.getKind());
+        assertEquals("send " + TOPIC_A, span.getName());
+        assertEquals(Status.StatusCode.STATUS_CODE_ERROR, span.getStatus().getCode());
+        assertTrue(attr(span, "error.type").endsWith("TimeoutException"), attr(span, "error.type"));
+        assertEquals(null, attr(span, "messaging.kafka.offset"), "never written, so no offset");
+        assertEquals(null, attr(span, "messaging.destination.partition.id"), "never assigned a partition");
     }
 }

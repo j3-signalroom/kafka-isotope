@@ -7,6 +7,8 @@
  */
 package ai.signalroom.kafka.isotope;
 
+import java.util.List;
+
 /**
  * The span seam between {@code kafka-isotope-core} (trace propagation) and any
  * tracing backend — the span-shaped sibling of {@link IsotopeMetricsSink}. Core
@@ -19,14 +21,23 @@ package ai.signalroom.kafka.isotope;
  * writes one OTLP span record per hop to a spans topic, and registers itself via
  * {@link IsotopeSpans#register(IsotopeSpanSink)} when it starts.
  *
+ * <h2>Where produce spans come from</h2>
+ * On kafka-clients 4.1+ the interceptor emits produce spans once the broker
+ * has answered, through {@link #recordAcknowledgedHopSpan}, so a span can carry
+ * the partition and offset and mark a failed send as an error. Older clients
+ * have no acknowledgement callback that sees the record's headers, so there it
+ * falls back to {@link #recordHopSpan} at {@code send()} time. Consume spans
+ * always come from {@link #recordConsumeSpan}.
+ *
  * <h2>Hot-path contract</h2>
- * Both {@code record*Span} methods are called from the producing application's
- * own thread — {@code recordHopSpan} from inside {@code Producer.send()} via
- * {@link IsotopeProducerInterceptor#onSend}. Implementations <b>must</b> return
- * promptly and <b>must not</b> throw: hand the work to a bounded queue drained
- * by a background thread, drop on overflow, and swallow every error. A span that
- * cannot be written is worth strictly less than the {@code send()} it would
- * otherwise delay or break.
+ * Every {@code record*} method runs on a thread the application cares about:
+ * {@code recordHopSpan} inside {@code Producer.send()}, and
+ * {@code recordAcknowledgedHopSpan} on the producer's network I/O thread, where
+ * slow code delays every other send on that producer. Implementations
+ * <b>must</b> return promptly and <b>must not</b> throw: hand the work to a
+ * bounded queue drained by a background thread, drop on overflow, and swallow
+ * every error. A span that cannot be written is worth strictly less than the
+ * {@code send()} it would otherwise delay or break.
  *
  * <h2>Lifecycle</h2>
  * {@link #acquire()} and {@link #release()} let a sink reference-count its users
@@ -49,7 +60,9 @@ public interface IsotopeSpanSink {
 
     /**
      * Records one produce-edge span for the hop {@code IsotopeProducerInterceptor}
-     * has just appended.
+     * has just appended, at {@code send()} time. Used on kafka-clients older than
+     * 4.1; newer clients report through {@link #recordAcknowledgedHopSpan}.
+     * Sinks should implement both.
      *
      * <p>Called <em>after</em> the append, so {@code isotope.hops()} already ends
      * with this hop and the entry before it (when present) is the parent edge —
@@ -63,6 +76,42 @@ public interface IsotopeSpanSink {
      *                    into the hop itself
      */
     void recordHopSpan(Isotope isotope, String thisService, String thisTopic, long hopTsMs);
+
+    /**
+     * Records the produce-edge span for a hop once the broker has answered —
+     * accepted it, rejected it, or the send failed before it got that far.
+     * Called from {@code IsotopeProducerInterceptor.onAcknowledgement} on
+     * kafka-clients 4.1+, in place of {@link #recordHopSpan}.
+     *
+     * <p>This runs on the producer's network I/O thread, which is why it is
+     * handed the raw header bytes rather than a decoded {@link Isotope}: a sink
+     * should queue them and decode off-thread.
+     *
+     * <p>The default decodes right here and delegates to {@link #recordHopSpan},
+     * discarding the delivery outcome, so a sink that implements only the
+     * {@code send()}-time method still sees every hop. Sinks that care about the
+     * I/O-thread cost or the outcome override it.
+     *
+     * @param isotopeJson the {@link Isotope#HEADER_KEY} header value exactly as
+     *                    sent; its last hop is this produce, the one before it
+     *                    the parent edge
+     * @param partition   the partition written to, or {@code -1} when the send
+     *                    failed before one was assigned
+     * @param offset      the offset the broker assigned, or {@code -1} when the
+     *                    record was not written
+     * @param error       why the send failed, or {@code null} if the broker
+     *                    accepted the record
+     */
+    default void recordAcknowledgedHopSpan(byte[] isotopeJson, int partition,
+            long offset, Exception error) {
+        Isotope isotope = Isotope.fromJsonBytes(isotopeJson);
+        List<Isotope.Hop> hops = isotope.hops();
+        if (hops.isEmpty()) {
+            return;
+        }
+        Isotope.Hop hop = hops.get(hops.size() - 1);
+        recordHopSpan(isotope, hop.service(), hop.topic(), hop.tsMs());
+    }
 
     /**
      * Records one consume-edge span, the span-shaped companion to the bipartite

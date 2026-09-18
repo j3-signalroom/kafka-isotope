@@ -22,6 +22,7 @@ import io.opentelemetry.proto.resource.v1.Resource;
 import io.opentelemetry.proto.trace.v1.ResourceSpans;
 import io.opentelemetry.proto.trace.v1.ScopeSpans;
 import io.opentelemetry.proto.trace.v1.Span;
+import io.opentelemetry.proto.trace.v1.Status;
 
 /**
  * Turns {@link SpanEvent}s into the bytes of an OTLP
@@ -49,6 +50,9 @@ final class OtlpSpanEncoder {
     private static final String ATTR_MSG_DESTINATION = "messaging.destination.name";
     private static final String ATTR_MSG_OP_NAME     = "messaging.operation.name";
     private static final String ATTR_MSG_OP_TYPE     = "messaging.operation.type";
+    private static final String ATTR_MSG_PARTITION   = "messaging.destination.partition.id";
+    private static final String ATTR_MSG_OFFSET      = "messaging.kafka.offset";
+    private static final String ATTR_ERROR_TYPE      = "error.type";
     private static final String ATTR_PIPELINE        = "isotope.pipeline";
     private static final String ATTR_ORIGIN_SERVICE  = "isotope.origin_service";
     private static final String ATTR_HOP_COUNT       = "isotope.hop_count";
@@ -116,6 +120,24 @@ final class OtlpSpanEncoder {
         byte[] parent = SpanIds.parentSpanId(e);
         if (parent != null) {
             span.setParentSpanId(ByteString.copyFrom(parent));
+        }
+
+        // Delivery outcome — present only on produce spans emitted from the
+        // acknowledgement (kafka-clients 4.1+). Unknowns are omitted rather than
+        // written as -1, which a backend would happily index as a real value.
+        if (e.partition() >= 0) {
+            span.addAttributes(stringAttr(ATTR_MSG_PARTITION, Integer.toString(e.partition())));
+        }
+        if (e.offset() >= 0) {
+            span.addAttributes(intAttr(ATTR_MSG_OFFSET, e.offset()));
+        }
+        if (e.failed()) {
+            span.addAttributes(stringAttr(ATTR_ERROR_TYPE, e.errorType()));
+            Status.Builder status = Status.newBuilder().setCode(Status.StatusCode.STATUS_CODE_ERROR);
+            if (e.errorMessage() != null) {
+                status.setMessage(e.errorMessage());
+            }
+            span.setStatus(status.build());
         }
         return span.build();
     }

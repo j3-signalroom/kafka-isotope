@@ -18,6 +18,7 @@ import io.opentelemetry.proto.common.v1.KeyValue;
 import io.opentelemetry.proto.resource.v1.Resource;
 import io.opentelemetry.proto.trace.v1.ResourceSpans;
 import io.opentelemetry.proto.trace.v1.Span;
+import io.opentelemetry.proto.trace.v1.Status;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -259,5 +260,75 @@ class OtlpSpanEncoderTest {
 
         assertTrue(attrs(span).get("isotope.truncated").getValue().getBoolValue());
         assertEquals(Isotope.MAX_HOPS, attrs(span).get("isotope.hop_count").getValue().getIntValue());
+    }
+
+    // ------------------------------------------------------------------
+    // Acknowledgement path (kafka-clients 4.1+)
+    // ------------------------------------------------------------------
+
+    @Test
+    void anAcknowledgedHopHasExactlyTheIdsOfItsSendTimeSpan() {
+        // Moving the emission point from onSend to onAcknowledgement must not
+        // change a single id, or traces from mixed client versions stop linking.
+        Isotope iso = traceWith(
+            new Isotope.Hop(ORIGIN_SERVICE, "topic-a", ORIGIN_TS + 10),
+            new Isotope.Hop("order-enrichment-service", "topic-b", ORIGIN_TS + 30));
+
+        SpanEvent atSend = produceEvent(iso);
+        SpanEvent atAck = new AckedHop(iso.toJsonBytes(), 3, 42L, null, null).resolve();
+
+        assertArrayEquals(SpanIds.spanId(atSend), SpanIds.spanId(atAck));
+        assertArrayEquals(SpanIds.parentSpanId(atSend), SpanIds.parentSpanId(atAck));
+        assertArrayEquals(atSend.traceId(), atAck.traceId());
+        assertEquals(atSend.startTsMs(), atAck.startTsMs());
+        assertEquals(atSend.tsMs(), atAck.tsMs());
+        assertEquals(atSend.hopCount(), atAck.hopCount());
+    }
+
+    @Test
+    void anAcknowledgedProduceCarriesWhereItLanded() throws InvalidProtocolBufferException {
+        Isotope iso = traceWith(new Isotope.Hop(ORIGIN_SERVICE, "topic-a", ORIGIN_TS + 10));
+        SpanEvent acked = new AckedHop(iso.toJsonBytes(), 3, 42L, null, null).resolve();
+
+        Span span = spansOf(ExportTraceServiceRequest.parseFrom(
+            OtlpSpanEncoder.encode(List.of(acked)))).get(0);
+
+        Map<String, KeyValue> a = attrs(span);
+        assertEquals("3", a.get("messaging.destination.partition.id").getValue().getStringValue());
+        assertEquals(42L, a.get("messaging.kafka.offset").getValue().getIntValue());
+        assertFalse(a.containsKey("error.type"));
+        assertEquals(Status.StatusCode.STATUS_CODE_UNSET, span.getStatus().getCode());
+    }
+
+    @Test
+    void aFailedProduceIsAnErrorSpan() throws InvalidProtocolBufferException {
+        Isotope iso = traceWith(new Isotope.Hop(ORIGIN_SERVICE, "topic-a", ORIGIN_TS + 10));
+        SpanEvent failed = AckedHop.of(iso.toJsonBytes(), -1, -1L,
+            new IllegalStateException("broker unreachable")).resolve();
+
+        Span span = spansOf(ExportTraceServiceRequest.parseFrom(
+            OtlpSpanEncoder.encode(List.of(failed)))).get(0);
+
+        assertEquals(Status.StatusCode.STATUS_CODE_ERROR, span.getStatus().getCode());
+        assertEquals("broker unreachable", span.getStatus().getMessage());
+        Map<String, KeyValue> a = attrs(span);
+        assertEquals(IllegalStateException.class.getName(), a.get("error.type").getValue().getStringValue());
+        assertFalse(a.containsKey("messaging.destination.partition.id"),
+            "unknown partition is omitted, not written as -1");
+        assertFalse(a.containsKey("messaging.kafka.offset"), "no offset: the record was never written");
+    }
+
+    @Test
+    void sendTimeSpansCarryNoDeliveryOutcome() throws InvalidProtocolBufferException {
+        // The pre-4.1 fallback can't know the outcome, so it mustn't pretend to.
+        Span span = spansOf(ExportTraceServiceRequest.parseFrom(OtlpSpanEncoder.encode(List.of(
+            produceEvent(traceWith(new Isotope.Hop(ORIGIN_SERVICE, "topic-a", ORIGIN_TS)))))))
+            .get(0);
+
+        Map<String, KeyValue> a = attrs(span);
+        assertFalse(a.containsKey("messaging.destination.partition.id"));
+        assertFalse(a.containsKey("messaging.kafka.offset"));
+        assertFalse(a.containsKey("error.type"));
+        assertEquals(Status.StatusCode.STATUS_CODE_UNSET, span.getStatus().getCode());
     }
 }

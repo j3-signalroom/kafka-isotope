@@ -61,23 +61,26 @@ import ai.signalroom.kafka.isotope.IsotopeSpans;
  * this one is ours.
  *
  * <h2>Never in the way of a send</h2>
- * {@link #recordHopSpan} runs on the caller's thread inside {@code send()}, so
- * it does exactly one thing: drop a small {@link SpanEvent} on a bounded queue
+ * Every {@code record*} method runs on a thread the application cares about —
+ * inside {@code send()}, or on the producer's network I/O thread — so each does
+ * exactly one thing: drop a small item on a bounded queue
  * ({@value #DEFAULT_QUEUE_CAPACITY} by default) and return. A background daemon
- * thread does the hashing, the protobuf encoding and the Kafka write. When the
+ * thread does the decoding, hashing, protobuf encoding and Kafka write. When the
  * queue is full, spans are dropped and counted ({@link #droppedSpans()}) rather
  * than made to wait: telemetry yields to the pipeline, never the other way
  * around. Every error on the path is swallowed and logged, throttled so a broker
  * outage can't turn into a log flood.
  *
- * <h2>Produce spans come from onSend</h2>
- * Spans are emitted from {@code onSend}, not {@code onAcknowledgement}, because
- * the acknowledgement callback receives neither the record nor its headers —
- * matching an ack back to its trace would need a map of in-flight records keyed
- * by correlation id. That means a span records an <em>attempted</em> produce:
- * a record that is later dropped by the producer still has a span. Carrying
- * broker-assigned partition and offset (and dropping spans for failed sends)
- * waits for that in-flight map, which stays out of scope here.
+ * <h2>Produce spans come from the acknowledgement</h2>
+ * On kafka-clients 4.1+ the interceptor reports each produce from
+ * {@code onAcknowledgement}, whose headers still carry the {@code x-isotope}
+ * JSON written at send time — so no in-flight map is needed to tie the answer
+ * back to its trace. Those spans record the outcome: partition and offset on
+ * success, ERROR status and {@code error.type} on failure. That callback runs on
+ * the producer's network I/O thread, so {@link #recordAcknowledgedHopSpan} only
+ * queues the raw header bytes ({@link AckedHop}); decoding happens here, on the
+ * writer thread. Older clients fall back to {@link #recordHopSpan} at send time,
+ * whose spans record the attempt only.
  *
  * <h2>Lifecycle</h2>
  * {@link #start(Map)} takes the first reference, and each configured
@@ -115,7 +118,7 @@ public final class KafkaOtlpSpanSink implements IsotopeSpanSink {
 
     // Read from Kafka send threads, written under the class lock.
     private volatile Producer<byte[], byte[]> producer;
-    private volatile BlockingQueue<SpanEvent> queue;
+    private volatile BlockingQueue<QueuedSpan> queue;
     private volatile String topic = DEFAULT_TOPIC;
     private volatile boolean running;
 
@@ -225,7 +228,7 @@ public final class KafkaOtlpSpanSink implements IsotopeSpanSink {
      */
     @Override
     public void recordHopSpan(Isotope isotope, String thisService, String thisTopic, long hopTsMs) {
-        BlockingQueue<SpanEvent> q = queue;
+        BlockingQueue<QueuedSpan> q = queue;
         if (q == null || isotope == null) {
             return;
         }
@@ -242,13 +245,33 @@ public final class KafkaOtlpSpanSink implements IsotopeSpanSink {
     }
 
     /**
+     * Queues a produce acknowledgement without decoding it. This runs on the
+     * producer's network I/O thread, so the JSON is left for the writer thread
+     * ({@link AckedHop#resolve()}); here it is one small allocation and a
+     * non-blocking offer.
+     */
+    @Override
+    public void recordAcknowledgedHopSpan(byte[] isotopeJson, int partition,
+            long offset, Exception error) {
+        BlockingQueue<QueuedSpan> q = queue;
+        if (q == null || isotopeJson == null) {
+            return;
+        }
+        try {
+            offer(q, AckedHop.of(isotopeJson, partition, offset, error));
+        } catch (RuntimeException e) {
+            dropped.incrementAndGet();
+        }
+    }
+
+    /**
      * Queues the consume edge. Its parent is the last hop on the trace — the
      * produce that put the record on {@code consumedTopic}.
      */
     @Override
     public void recordConsumeSpan(Isotope isotope, String consumerService,
             String consumedTopic, long consumeTsMs) {
-        BlockingQueue<SpanEvent> q = queue;
+        BlockingQueue<QueuedSpan> q = queue;
         if (q == null || isotope == null) {
             return;
         }
@@ -307,7 +330,7 @@ public final class KafkaOtlpSpanSink implements IsotopeSpanSink {
         }
 
         topic = (topicName == null || topicName.isBlank()) ? DEFAULT_TOPIC : topicName;
-        BlockingQueue<SpanEvent> q =
+        BlockingQueue<QueuedSpan> q =
             new ArrayBlockingQueue<>(queueCapacity > 0 ? queueCapacity : DEFAULT_QUEUE_CAPACITY);
         queue = q;
         producer = p;
@@ -353,7 +376,7 @@ public final class KafkaOtlpSpanSink implements IsotopeSpanSink {
         return c;
     }
 
-    private void offer(BlockingQueue<SpanEvent> q, SpanEvent event) {
+    private void offer(BlockingQueue<QueuedSpan> q, QueuedSpan event) {
         if (!q.offer(event)) {
             long total = dropped.incrementAndGet();
             warnThrottled(lastDropWarnMs,
@@ -362,11 +385,11 @@ public final class KafkaOtlpSpanSink implements IsotopeSpanSink {
         }
     }
 
-    private void drainLoop(BlockingQueue<SpanEvent> q, Producer<byte[], byte[]> p) {
-        List<SpanEvent> batch = new ArrayList<>(MAX_BATCH);
+    private void drainLoop(BlockingQueue<QueuedSpan> q, Producer<byte[], byte[]> p) {
+        List<QueuedSpan> batch = new ArrayList<>(MAX_BATCH);
         while (running) {
             try {
-                SpanEvent first = q.poll(POLL_MS, TimeUnit.MILLISECONDS);
+                QueuedSpan first = q.poll(POLL_MS, TimeUnit.MILLISECONDS);
                 if (first == null) {
                     continue;
                 }
@@ -389,10 +412,13 @@ public final class KafkaOtlpSpanSink implements IsotopeSpanSink {
      * single trace's spans and can be keyed by trace id — which also keeps a
      * trace's spans on one partition, and so in order, for the Collector.
      */
-    private void flush(List<SpanEvent> batch, Producer<byte[], byte[]> p) {
+    private void flush(List<QueuedSpan> batch, Producer<byte[], byte[]> p) {
         Map<ByteBuffer, List<SpanEvent>> byTrace = new LinkedHashMap<>();
-        for (SpanEvent e : batch) {
-            byTrace.computeIfAbsent(ByteBuffer.wrap(e.traceId()), k -> new ArrayList<>()).add(e);
+        for (QueuedSpan queued : batch) {
+            SpanEvent e = resolve(queued);
+            if (e != null) {
+                byTrace.computeIfAbsent(ByteBuffer.wrap(e.traceId()), k -> new ArrayList<>()).add(e);
+            }
         }
 
         String destination = topic;
@@ -413,6 +439,31 @@ public final class KafkaOtlpSpanSink implements IsotopeSpanSink {
                 warnThrottled(lastFailWarnMs,
                     "isotope span send rejected ({} failure(s) so far): {}", total, e.toString());
             }
+        }
+    }
+
+    /**
+     * Turns a queued item into its span event, decoding deferred
+     * acknowledgements here on the writer thread. An undecodable header is
+     * counted as a dropped span and skipped, without costing the rest of the
+     * batch.
+     */
+    private SpanEvent resolve(QueuedSpan queued) {
+        if (queued instanceof SpanEvent e) {
+            return e;
+        }
+        try {
+            SpanEvent e = ((AckedHop) queued).resolve();
+            if (e == null) {
+                dropped.incrementAndGet();
+            }
+            return e;
+        } catch (RuntimeException ex) {
+            dropped.incrementAndGet();
+            warnThrottled(lastFailWarnMs,
+                "isotope span writer: undecodable x-isotope header on an acknowledged record ({})",
+                ex.toString());
+            return null;
         }
     }
 
@@ -449,7 +500,7 @@ public final class KafkaOtlpSpanSink implements IsotopeSpanSink {
         }
 
         Producer<byte[], byte[]> p = producer;
-        BlockingQueue<SpanEvent> q = queue;
+        BlockingQueue<QueuedSpan> q = queue;
         producer = null;
         queue = null;
         starterRefHeld = false;
@@ -462,7 +513,7 @@ public final class KafkaOtlpSpanSink implements IsotopeSpanSink {
             // One last drain, here rather than in the (interrupted) writer, so
             // shutdown deterministically flushes what was already queued.
             if (q != null && !q.isEmpty()) {
-                List<SpanEvent> remaining = new ArrayList<>(q.size());
+                List<QueuedSpan> remaining = new ArrayList<>(q.size());
                 q.drainTo(remaining);
                 for (int i = 0; i < remaining.size(); i += MAX_BATCH) {
                     flush(remaining.subList(i, Math.min(i + MAX_BATCH, remaining.size())), p);

@@ -30,6 +30,12 @@ final class NoOpSpanSink implements IsotopeSpanSink {
     }
 
     @Override
+    public void recordAcknowledgedHopSpan(byte[] isotopeJson, int partition,
+            long offset, Exception error) {
+        // --- no-op (overridden so the default's JSON decode never runs)
+    }
+
+    @Override
     public void recordConsumeSpan(Isotope isotope, String consumerService,
             String consumedTopic, long consumeTsMs) {
         // --- no-op

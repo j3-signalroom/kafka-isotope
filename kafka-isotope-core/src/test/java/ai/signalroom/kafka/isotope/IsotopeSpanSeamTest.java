@@ -16,11 +16,16 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.producer.MockProducer;
 import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.clients.producer.RecordMetadata;
+import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.errors.TimeoutException;
 import org.apache.kafka.common.header.internals.RecordHeaders;
 import org.apache.kafka.common.serialization.ByteArraySerializer;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.AfterEach;
@@ -46,7 +51,10 @@ class IsotopeSpanSeamTest {
 
         record ConsumeSpan(Isotope isotope, String service, String topic, long tsMs) {}
 
+        record AckedSpan(byte[] isotopeJson, int partition, long offset, Exception error) {}
+
         final List<HopSpan> hopSpans = new ArrayList<>();
+        final List<AckedSpan> ackedSpans = new ArrayList<>();
         final List<ConsumeSpan> consumeSpans = new ArrayList<>();
         final AtomicInteger refs = new AtomicInteger();
 
@@ -58,6 +66,12 @@ class IsotopeSpanSeamTest {
         @Override
         public void recordHopSpan(Isotope isotope, String thisService, String thisTopic, long hopTsMs) {
             hopSpans.add(new HopSpan(isotope, thisService, thisTopic, hopTsMs));
+        }
+
+        @Override
+        public void recordAcknowledgedHopSpan(byte[] isotopeJson, int partition,
+                long offset, Exception error) {
+            ackedSpans.add(new AckedSpan(isotopeJson, partition, offset, error));
         }
 
         @Override
@@ -81,6 +95,11 @@ class IsotopeSpanSeamTest {
     void reset() {
         IsotopeSpans.reset();
         IsotopeContext.clear();
+    }
+
+    /** What a 4.1+ producer reports for a record the broker accepted. */
+    private static RecordMetadata written(String topic, int partition, long offset) {
+        return new RecordMetadata(new TopicPartition(topic, partition), offset, 0, 0L, 0, 0);
     }
 
     private static IsotopeProducerInterceptor<byte[], byte[]> interceptor() {
@@ -114,15 +133,116 @@ class IsotopeSpanSeamTest {
     }
 
     @Test
-    void onSendRecordsAHopSpanCarryingTheParentEdge() {
+    void thisClasspathTakesTheAcknowledgementPath() {
+        // Guards the tests below: on kafka-clients 4.1+ the headers overload
+        // exists, so without this they could silently test only the fallback.
+        assertTrue(IsotopeProducerInterceptor.ACK_HEADERS_SUPPORTED);
+        assertTrue(interceptor().spansOnAck);
+    }
+
+    @Test
+    void theHopSpanWaitsForTheAcknowledgement() {
+        CapturingSpanSink sink = new CapturingSpanSink();
+        IsotopeSpans.register(sink);
+        IsotopeProducerInterceptor<byte[], byte[]> producing = interceptor();
+
+        ProducerRecord<byte[], byte[]> sent = producing.onSend(record(TOPIC_A));
+        assertTrue(sink.hopSpans.isEmpty(), "nothing is reported until the broker answers");
+        assertTrue(sink.ackedSpans.isEmpty());
+
+        producing.onAcknowledgement(written(TOPIC_A, 3, 42L), null, sent.headers());
+
+        assertEquals(1, sink.ackedSpans.size(), "one span per hop, from the acknowledgement");
+        assertTrue(sink.hopSpans.isEmpty(), "and never a second one from onSend");
+        CapturingSpanSink.AckedSpan acked = sink.ackedSpans.get(0);
+        assertEquals(3, acked.partition());
+        assertEquals(42L, acked.offset());
+        assertNull(acked.error());
+
+        // The bytes handed over are the x-isotope header as sent: the hop just
+        // appended is last, which is what lets the sink derive the span.
+        Isotope asSent = Isotope.fromJsonBytes(acked.isotopeJson());
+        assertEquals(1, asSent.hops().size());
+        assertEquals(TOPIC_A, asSent.hops().get(0).topic());
+        assertEquals(SERVICE, asSent.hops().get(0).service());
+    }
+
+    @Test
+    void aFailedSendIsReportedWithItsError() {
+        CapturingSpanSink sink = new CapturingSpanSink();
+        IsotopeSpans.register(sink);
+        IsotopeProducerInterceptor<byte[], byte[]> producing = interceptor();
+        ProducerRecord<byte[], byte[]> sent = producing.onSend(record(TOPIC_A));
+
+        // What Kafka reports when a send fails before a partition is assigned.
+        TimeoutException failure = new TimeoutException("metadata not available");
+        producing.onAcknowledgement(
+            new RecordMetadata(new TopicPartition(TOPIC_A, RecordMetadata.UNKNOWN_PARTITION), -1L, -1, 0L, -1, -1),
+            failure, sent.headers());
+
+        CapturingSpanSink.AckedSpan acked = sink.ackedSpans.get(0);
+        assertSame(failure, acked.error());
+        assertEquals(-1, acked.partition());
+        assertEquals(-1L, acked.offset(), "no offset: the record was never written");
+    }
+
+    @Test
+    void anAcknowledgementWithoutAnIsotopeHeaderIsIgnored() {
         CapturingSpanSink sink = new CapturingSpanSink();
         IsotopeSpans.register(sink);
 
-        // Stage one: origin produce.
+        // e.g. onSend threw and Kafka sent the record unstamped.
+        interceptor().onAcknowledgement(written(TOPIC_A, 0, 1L), null, new RecordHeaders());
+        interceptor().onAcknowledgement(written(TOPIC_A, 0, 1L), null, null);
+
+        assertTrue(sink.ackedSpans.isEmpty());
+    }
+
+    @Test
+    void theDefaultAcknowledgementDelegatesToTheSendTimeMethod() {
+        // A sink that only implements the send-time method must still see every
+        // hop on a 4.1+ client, via the interface's default.
+        List<CapturingSpanSink.HopSpan> seen = new ArrayList<>();
+        IsotopeSpans.register(new IsotopeSpanSink() {
+            @Override
+            public boolean isEnabled() {
+                return true;
+            }
+
+            @Override
+            public void recordHopSpan(Isotope isotope, String thisService,
+                    String thisTopic, long hopTsMs) {
+                seen.add(new CapturingSpanSink.HopSpan(isotope, thisService, thisTopic, hopTsMs));
+            }
+
+            @Override
+            public void recordConsumeSpan(Isotope isotope, String consumerService,
+                    String consumedTopic, long consumeTsMs) {
+                // --- not under test
+            }
+        });
+
+        IsotopeProducerInterceptor<byte[], byte[]> producing = interceptor();
+        ProducerRecord<byte[], byte[]> sent = producing.onSend(record(TOPIC_A));
+        producing.onAcknowledgement(written(TOPIC_A, 0, 5L), null, sent.headers());
+
+        assertEquals(1, seen.size());
+        assertEquals(SERVICE, seen.get(0).service());
+        assertEquals(TOPIC_A, seen.get(0).topic());
+        assertEquals(seen.get(0).isotope().hops().get(0).tsMs(), seen.get(0).tsMs());
+    }
+
+    @Test
+    void preFourOneClientsFallBackToOnSendWithTheParentEdge() {
+        CapturingSpanSink sink = new CapturingSpanSink();
+        IsotopeSpans.register(sink);
+
+        // Stage one: origin produce, on a client with no headers in the ack.
         IsotopeProducerInterceptor<byte[], byte[]> stageOne = interceptor();
+        stageOne.spansOnAck = false;
         ProducerRecord<byte[], byte[]> first = stageOne.onSend(record(TOPIC_A));
 
-        assertEquals(1, sink.hopSpans.size());
+        assertEquals(1, sink.hopSpans.size(), "emitted at send time instead");
         CapturingSpanSink.HopSpan origin = sink.hopSpans.get(0);
         assertEquals(SERVICE, origin.service());
         assertEquals(TOPIC_A, origin.topic());
@@ -130,9 +250,15 @@ class IsotopeSpanSeamTest {
         assertEquals(origin.tsMs(), origin.isotope().hops().get(0).tsMs(),
             "the timestamp handed to the sink is the hop's own");
 
+        // An old client would never call this; if it somehow did, no double span.
+        stageOne.onAcknowledgement(written(TOPIC_A, 0, 1L), null, first.headers());
+        assertTrue(sink.ackedSpans.isEmpty());
+
         // Stage two: adopt the trace and re-produce onto another topic.
         IsotopeContext.adoptFromRecord(asConsumed(first));
-        interceptor().onSend(record(TOPIC_B));
+        IsotopeProducerInterceptor<byte[], byte[]> stageTwo = interceptor();
+        stageTwo.spansOnAck = false;
+        stageTwo.onSend(record(TOPIC_B));
 
         assertEquals(2, sink.hopSpans.size());
         CapturingSpanSink.HopSpan second = sink.hopSpans.get(1);
@@ -238,10 +364,19 @@ class IsotopeSpanSeamTest {
             }
         });
 
+        // The send-time path (pre-4.1 clients)...
+        IsotopeProducerInterceptor<byte[], byte[]> legacy = interceptor();
+        legacy.spansOnAck = false;
         ProducerRecord<byte[], byte[]> in = record(TOPIC_A);
-        ProducerRecord<byte[], byte[]> out = interceptor().onSend(in);
+        ProducerRecord<byte[], byte[]> out = legacy.onSend(in);
 
         assertSame(in, out, "send() sails on");
         assertNotNull(out.headers().lastHeader(Isotope.HEADER_KEY), "trace propagation unaffected");
+
+        // ...and the acknowledgement path, whose default decodes then calls the
+        // same throwing method.
+        IsotopeProducerInterceptor<byte[], byte[]> current = interceptor();
+        ProducerRecord<byte[], byte[]> sent = current.onSend(record(TOPIC_A));
+        assertDoesNotThrow(() -> current.onAcknowledgement(written(TOPIC_A, 0, 1L), null, sent.headers()));
     }
 }

@@ -22,7 +22,8 @@ package ai.signalroom.kafka.isotope;
  * when it starts, after which each hop is written to the spans topic as OTLP.
  *
  * <h2>Why the emission helpers swallow</h2>
- * {@link #recordHopSpan} runs inside the caller's {@code Producer.send()}. A
+ * {@link #recordHopSpan} runs inside the caller's {@code Producer.send()}, and
+ * {@link #recordAcknowledgedHopSpan} on the producer's I/O thread. A
  * sink is contractually required not to throw, but a broken third-party sink
  * must not be able to fail somebody's produce, so the delegation here catches
  * and drops anything that escapes. Metrics need no such guard: they take the
@@ -65,6 +66,17 @@ public final class IsotopeSpans {
             sink.recordHopSpan(isotope, thisService, thisTopic, hopTsMs);
         } catch (RuntimeException e) {
             // A span is never worth failing the send() it rode in on.
+        }
+    }
+
+    /** @see IsotopeSpanSink#recordAcknowledgedHopSpan */
+    public static void recordAcknowledgedHopSpan(byte[] isotopeJson, int partition,
+            long offset, Exception error) {
+        try {
+            sink.recordAcknowledgedHopSpan(isotopeJson, partition, offset, error);
+        } catch (RuntimeException e) {
+            // Kafka logs and ignores interceptor exceptions here, but at WARN on
+            // every record; a broken sink shouldn't flood the producer's log.
         }
     }
 

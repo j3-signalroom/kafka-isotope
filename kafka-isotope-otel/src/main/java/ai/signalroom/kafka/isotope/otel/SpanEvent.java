@@ -13,8 +13,10 @@ import ai.signalroom.kafka.isotope.Isotope;
  * One pipeline edge, flattened into the few values a span needs, as handed from
  * the producing thread to the span writer's background thread.
  *
- * <p>This exists so the hot path stays trivial: {@code onSend} copies field
- * references into this record and drops it on a bounded queue. Hashing span ids,
+ * <p>This exists so the hot path stays trivial: the send-time and consume paths
+ * copy field references into this record and drop it on a bounded queue (an
+ * acknowledgement queues an {@link AckedHop} instead, resolved into one of
+ * these on the writer thread). Hashing span ids,
  * building protobuf and talking to Kafka all happen later, on the writer thread.
  * It deliberately holds no reference to the mutable {@link Isotope} — that
  * object keeps accumulating hops after the send returns, and a span must
@@ -22,6 +24,10 @@ import ai.signalroom.kafka.isotope.Isotope;
  *
  * <p>{@code parentService} is {@code null} when this edge has no predecessor
  * (the origin produce), in which case {@link #parentTsMs()} is {@code -1}.
+ *
+ * <p>The last four components describe the delivery outcome, known only for a
+ * produce span emitted from the acknowledgement (kafka-clients 4.1+). Spans
+ * emitted from {@code onSend} or for a consume leave them unset.
  *
  * @param traceId       the trace's 16 bytes — also the OTel trace id, verbatim
  * @param pipeline      the trace's pipeline (origin-set, forwarded)
@@ -36,6 +42,10 @@ import ai.signalroom.kafka.isotope.Isotope;
  * @param hopCount      hops accumulated on the trace at this edge
  * @param truncated     whether the hop ring had already evicted its oldest entry
  * @param kind          produce edge or consume edge
+ * @param partition     partition written to, or {@code -1} if unknown
+ * @param offset        offset the broker assigned, or {@code -1} if none
+ * @param errorType     class name of the send failure, or {@code null}
+ * @param errorMessage  message of the send failure, or {@code null}
  */
 record SpanEvent(
         byte[] traceId,
@@ -50,7 +60,11 @@ record SpanEvent(
         long parentTsMs,
         int hopCount,
         boolean truncated,
-        Kind kind) {
+        Kind kind,
+        int partition,
+        long offset,
+        String errorType,
+        String errorMessage) implements QueuedSpan {
 
     /** Which side of the pipeline an edge describes. */
     enum Kind { PRODUCE, CONSUME }
@@ -71,7 +85,23 @@ record SpanEvent(
             parent == null ? -1L : parent.tsMs(),
             hopCount,
             isotope.truncated(),
-            kind);
+            kind,
+            -1,
+            -1L,
+            null,
+            null);
+    }
+
+    /** This event with the delivery outcome from a produce acknowledgement. */
+    SpanEvent acknowledged(int ackPartition, long ackOffset, String ackErrorType, String ackErrorMessage) {
+        return new SpanEvent(traceId, pipeline, originService, originTsMs, service, topic, tsMs,
+            parentService, parentTopic, parentTsMs, hopCount, truncated, kind,
+            ackPartition, ackOffset, ackErrorType, ackErrorMessage);
+    }
+
+    /** Whether the produce this span describes failed. */
+    boolean failed() {
+        return errorType != null;
     }
 
     private static String orUnknown(String s) {
