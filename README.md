@@ -40,11 +40,11 @@ This makes `kafka-isotope` a lightweight but powerful observability layer for Ka
 
 | Module | Coordinate | Pulls | Use it for |
 |---|---|---|---|
-| **kafka-isotope-core** | `ai.signalroom:kafka-isotope-core` | Jackson, SLF4J (`kafka-clients` is `compileOnly`) | Trace **propagation** — interceptor, headers, consume markers. |
-| **kafka-isotope-metrics** | `ai.signalroom:kafka-isotope-metrics` | kafka-isotope-core + Micrometer/Prometheus | Optional `/metrics` exporter for the stateless reports. |
-| **kafka-isotope-otel** | `ai.signalroom:kafka-isotope-otel` | kafka-isotope-core + OTLP protobuf | Optional **span** writer — one OTLP span per hop on a Kafka topic, read by a stock OpenTelemetry Collector. |
+| [**kafka-isotope-core**](kafka-isotope-core/README.md) | `ai.signalroom:kafka-isotope-core` | Jackson, SLF4J (`kafka-clients` is `compileOnly`) | Trace **propagation** — interceptor, headers, consume markers. |
+| [**kafka-isotope-metrics**](kafka-isotope-metrics/README.md) | `ai.signalroom:kafka-isotope-metrics` | kafka-isotope-core + Micrometer/Prometheus | Optional `/metrics` exporter for the stateless reports. |
+| [**kafka-isotope-otel**](kafka-isotope-otel/README.md) | `ai.signalroom:kafka-isotope-otel` | kafka-isotope-core + OTLP protobuf | Optional **span** writer — one [OTel span](https://opentelemetry.io/docs/concepts/signals/traces/#spans) per hop on a Kafka topic, read by a stock OpenTelemetry (OTel) Collector. |
 
-`kafka-isotope-core` has no metrics or tracing dependency. It routes every emission through two sinks that start out as no-ops (`NoOpMetricsSink` and `NoOpSpanSink`). Adding `kafka-isotope-metrics` or `kafka-isotope-otel` to the classpath doesn't change that: the real sink is registered only when your application calls `PrometheusIsotopeMetrics.start(port)` or `KafkaOtlpSpanSink.start(config)`, and stays a no-op if that call fails. Until then, each record costs an "is it enabled?" check and no metric or span work.
+`kafka-isotope-core` has no metrics or tracing dependency. It routes every emission through two sinks that start out as no-ops (`NoOpMetricsSink` and `NoOpSpanSink`). Adding `kafka-isotope-metrics` or `kafka-isotope-otel` to the classpath doesn't change that: the real sink is registered only when your application calls `PrometheusIsotopeMetrics.start(port)` or `KafkaOtlpSpanSink.start(config)`, and stays a no-op if that call fails. Until then, each record costs an "_is it enabled?_" check and no metric or span work.
 
 ## **2.0 Install using Gradle**
 
@@ -59,9 +59,7 @@ dependencies {
 }
 ```
 
-See **[kafka-isotope-core/README.md](kafka-isotope-core/README.md)** for the full adopter quickstart (registering the interceptor, adopting/marking on consume, starting the exporter). The optional modules have their own: **[kafka-isotope-metrics/README.md](kafka-isotope-metrics/README.md)** for the Prometheus metrics, and **[kafka-isotope-otel/README.md](kafka-isotope-otel/README.md)** for the span writer and the Collector config that reads it.
-
 ## **3.0 Demo**
 
-A runnable reference pipeline (Confluent Platform / Confluent Cloud on Minikube, the seven Flink reports, and a one-command Prometheus + Grafana showcase) lives in the companion repo:
+A runnable reference event pipeline (Confluent Platform on minikube / Confluent Cloud, the seven Flink reports, and a one-command Prometheus + Grafana showcase) lives in the companion repo:
 [j3-signalroom/confluent-kafka-isotope](https://github.com/j3-signalroom/confluent-kafka-isotope).

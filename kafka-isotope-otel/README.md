@@ -1,6 +1,6 @@
 # Isotope spans for OpenTelemetry (OTel)
 
-Optional span writer for `kafka-isotope`. It turns every isotope hop into an **OpenTelemetry span** and writes it to a Kafka topic as an OTLP `ExportTraceServiceRequest` — the exact bytes a stock [OpenTelemetry Collector](https://opentelemetry.io/docs/collector/) reads.
+Optional span writer for `kafka-isotope`. It turns every isotope hop into an **OTel span** and writes it to a Kafka topic as an OTLP `ExportTraceServiceRequest` — the exact bytes a stock [OpenTelemetry Collector](https://opentelemetry.io/docs/collector/) reads.
 
 Nothing isotope-specific runs on the consuming side. A Collector with a `kafka` receiver set to `encoding: otlp_proto` consumes the topic and exports to any OTLP backend (Groundcover, Jaeger, Tempo, Honeycomb…). The integration a customer has to perform is Collector config plus read access to one topic.
 
@@ -18,7 +18,7 @@ producer.send() ──▶ IsotopeProducerInterceptor ──▶ span queue ──
 
 **Table of Contents**
 <!-- toc -->
-- [**1.0 Install**](#10-install)
+- [**1.0 Install using Gradle**](#10-install-using-gradle)
 - [**2.0 Put It To Work**](#20-put-it-to-work)
   + [**2.1 Collector Config**](#21-collector-config)
 - [**3.0 What a Span Looks Like**](#30-what-a-span-looks-like)
@@ -31,12 +31,16 @@ producer.send() ──▶ IsotopeProducerInterceptor ──▶ span queue ──
 
 ---
 
-## **1.0 Install**
+## **1.0 Install using Gradle**
 
 ```groovy
+repositories {
+    mavenCentral()
+}
+
 dependencies {
     implementation 'ai.signalroom:kafka-isotope-core:0.19.0'
-    implementation 'ai.signalroom:kafka-isotope-otel:0.19.0' // optional — only for spans
+    implementation 'ai.signalroom:kafka-isotope-otel:0.19.0' // optional — only for OTel spans
 }
 ```
 

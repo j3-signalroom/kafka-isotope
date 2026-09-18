@@ -8,7 +8,7 @@ Three artifacts, so you only take what you need:
 |---|---|---|---|
 | **kafka-isotope-core** | `ai.signalroom:kafka-isotope-core` | Jackson, SLF4J (`kafka-clients` is `compileOnly`) | Trace **propagation** — the interceptor, headers, consume markers. |
 | **kafka-isotope-metrics** | `ai.signalroom:kafka-isotope-metrics` | kafka-isotope-core + Micrometer/Prometheus | Optional `/metrics` exporter for the stateless reports. |
-| **kafka-isotope-otel** | `ai.signalroom:kafka-isotope-otel` | kafka-isotope-core + OTLP protobuf | Optional span writer — one OTLP span per hop on a Kafka topic. |
+| **kafka-isotope-otel** | `ai.signalroom:kafka-isotope-otel` | kafka-isotope-core + OTLP protobuf | Optional span writer — one OTel span per hop on a Kafka topic. |
 
 > `kafka-isotope-core` has no metrics or tracing dependency. Emission is routed through the [`IsotopeMetricsSink`](src/main/java/ai/signalroom/kafka/isotope/IsotopeMetricsSink.java) and [`IsotopeSpanSink`](src/main/java/ai/signalroom/kafka/isotope/IsotopeSpanSink.java) interfaces, which start out as no-ops. Adding `kafka-isotope-metrics` or `kafka-isotope-otel` to the classpath doesn't change that: the real sink is registered only when your application calls `PrometheusIsotopeMetrics.start(port)` or `KafkaOtlpSpanSink.start(config)` (steps [§2.3](#23-optional-metrics--start-the-prometheus-exporter-once-at-boot) and [§2.4](#24-optional-otel-spans--start-the-opentelemetry-protocol-otlp-span-writer-once-at-boot) below), and stays a no-op if that call fails. Until then, each record costs an "is it enabled?" check and no metric or span work.
 
@@ -16,7 +16,7 @@ Three artifacts, so you only take what you need:
 
 **Table of Contents**
 <!-- toc -->
-- [**1.0 Install**](#10-install)
+- [**1.0 Install using Gradle**](#10-install-using-gradle)
 - [**2.0 Put It To Work**](#20-put-it-to-work)
   + [**2.1 Produce Side — Register the Interceptor**](#21-produce-side--register-the-interceptor)
   + [**2.2 Consume Side — Adopt to Continue the Trace, or Mark a Terminal Consume**](#22-consume-side--adopt-to-continue-the-trace-or-mark-a-terminal-consume)
@@ -27,12 +27,13 @@ Three artifacts, so you only take what you need:
 
 ---
 
-## **1.0 Install**
+## **1.0 Install using Gradle**
 
 ```groovy
 repositories {
     mavenCentral()
 }
+
 dependencies {
     implementation 'ai.signalroom:kafka-isotope-core:0.19.0'
     implementation 'ai.signalroom:kafka-isotope-metrics:0.19.0' // optional — only for Prometheus metrics
@@ -93,7 +94,7 @@ KafkaOtlpSpanSink.start(Map.of(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "kafka:9
 KafkaOtlpSpanSink.close();
 ```
 
-Every hop then lands on `isotope_trace_spans` as an [OTLP span](https://opentelemetry.io/docs/concepts/signals/traces/#spans), ready for a stock OpenTelemetry Collector. Queued off the hot path and dropped rather than allowed to delay a `send()`. At shutdown, `close()` releases the writer; its producer flushes any queued spans and closes once your producers (and their interceptors) have closed too. See [kafka-isotope-otel/README.md](../kafka-isotope-otel/README.md).
+Every hop then lands on `isotope_trace_spans` as an [OTel span](https://opentelemetry.io/docs/concepts/signals/traces/#spans), ready for a stock OpenTelemetry Collector. Queued off the hot path and dropped rather than allowed to delay a `send()`. At shutdown, `close()` releases the writer; its producer flushes any queued spans and closes once your producers (and their interceptors) have closed too. See [kafka-isotope-otel/README.md](../kafka-isotope-otel/README.md).
 
 ## **3.0 Where to Find the Code**
 
