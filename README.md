@@ -57,6 +57,7 @@ This makes `kafka-isotope` a lightweight but powerful observability layer for Ka
 repositories {
     mavenCentral()
 }
+
 dependencies {
     implementation 'ai.signalroom:kafka-isotope-core:0.19.0'
     implementation 'ai.signalroom:kafka-isotope-metrics:0.19.0' // optional — only for Prometheus metrics
@@ -66,5 +67,4 @@ dependencies {
 
 ## **3.0 Demo**
 
-A runnable reference event pipeline (Confluent Platform on minikube / Confluent Cloud, the seven Flink reports, and a one-command Prometheus + Grafana showcase) lives in the companion repo:
-[`confluent-kafka-isotope`](https://github.com/j3-signalroom/confluent-kafka-isotope).
+To showcase the capabilities of the `kafka-isotope` library, the companion [`confluent-kafka-isotope`](https://github.com/j3-signalroom/confluent-kafka-isotope) repository provides a runnable reference e-commerce order event pipeline that can be deployed on Confluent Platform on minikube or Confluent Cloud. Both runtimes support all seven Flink reports and an optional Prometheus + Grafana stack (hosted on minikube) for metrics collection and visualization.
