@@ -34,15 +34,18 @@ This makes `kafka-isotope` a lightweight but powerful observability layer for Ka
 
 **Table of Contents**
 <!-- toc -->
-- [**1.0 Modules**](#10-modules)
+- [**1.0 Anatomys**](#10-anatomy)
+    + [**1.1 Modules**](#11-modules)
+    + [**1.2 Architecture**](#12-architecture)
 - [**2.0 Install using Gradle**](#20-install-using-gradle)
 - [**3.0 Demo**](#30-demo)
 <!-- tocstop -->
 
 ---
 
-## **1.0 Modules**
+## **1.0 Anatomy**
 
+### **1.1 Modules**
 | Module | Coordinate | Pulls | Use it for |
 |---|---|---|---|
 | [**kafka-isotope-core**](kafka-isotope-core/README.md) | `ai.signalroom:kafka-isotope-core` | Jackson, SLF4J (`kafka-clients` is `compileOnly`) | Trace **propagation** — interceptor, headers, consume markers. |
@@ -51,6 +54,7 @@ This makes `kafka-isotope` a lightweight but powerful observability layer for Ka
 
 `kafka-isotope-core` has no metrics or tracing dependency. It routes every emission through two sinks that start out as no-ops (`NoOpMetricsSink` and `NoOpSpanSink`). Adding `kafka-isotope-metrics` or `kafka-isotope-otel` to the classpath doesn't change that: the real sink is registered only when your application calls `PrometheusIsotopeMetrics.start(port)` or `KafkaOtlpSpanSink.start(config)`, and stays a no-op if that call fails. Until then, each record costs an "_is it enabled?_" check and no metric or span work.
 
+### **1.2 Architecture**
 ```mermaid
 flowchart TB
     subgraph APP["Your application"]
