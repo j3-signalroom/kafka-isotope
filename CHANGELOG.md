@@ -14,6 +14,7 @@ The format is base on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), 
 
 ### Fixed
 - Issues[`#31`](https://github.com/j3-signalroom/kafka-isotope/issues/31)
+- Issues[`#42`](https://github.com/j3-signalroom/kafka-isotope/issues/42)
 
 ## 0.19.0 - 2026-09-18
 ### Added

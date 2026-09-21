@@ -34,7 +34,7 @@ This makes `kafka-isotope` a lightweight but powerful observability layer for Ka
 
 **Table of Contents**
 <!-- toc -->
-- [**1.0 Anatomys**](#10-anatomy)
+- [**1.0 Anatomy**](#10-anatomy)
     + [**1.1 Modules**](#11-modules)
     + [**1.2 Architecture**](#12-architecture)
 - [**2.0 Install using Gradle**](#20-install-using-gradle)
