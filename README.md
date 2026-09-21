@@ -88,7 +88,7 @@ flowchart TB
     TOPICS & MARK -.-> FLINK["Flink SQL (confluent-kafka-isotope demo)<br/>all 7 reports"]
 ```
 
-Dashed arrows are optional: the Prometheus metrics and OTel span modules only run after their `start` call, and Flink SQL lives in the companion demo repository, [`confluent-kafka-isotope`](https://github.com/j3-signalroom/confluent-kafka-isotope), not in this library.
+> Dashed arrows are optional: the Prometheus metrics and OTel span modules only run after their `start` call, and Flink SQL lives in the companion demo repository, [`confluent-kafka-isotope`](https://github.com/j3-signalroom/confluent-kafka-isotope), not in this library.
 
 ## **2.0 Install using Gradle**
 
